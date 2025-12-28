@@ -1,0 +1,5 @@
+numpy
+pyaudio
+python-osc
+essentia
+resampy
