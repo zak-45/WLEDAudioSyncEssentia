@@ -67,7 +67,7 @@ GENRE_MAPPING = {
 1.  Ensure your WLED device is powered on and connected to the network.
 2.  Run the application:
     ```bash
-    python main.py
+    python WLEDAudioSyncEssentia.py
     ```
 3.  Play music on your system. The script will analyze the audio stream and switch the WLED presets based on the dominant genre detected.
 
