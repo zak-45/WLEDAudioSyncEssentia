@@ -1,5 +1,6 @@
 numpy
 pyaudio
 python-osc
-essentia
+#essentia
 resampy
+six
