@@ -1,7 +1,7 @@
 numpy
 pyaudio
 python-osc
-#essentia
+essentia-tensorflow ; sys_platform != "win32"
 resampy
 six
 imageio
