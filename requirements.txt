@@ -4,3 +4,4 @@ python-osc
 #essentia
 resampy
 six
+imageio
