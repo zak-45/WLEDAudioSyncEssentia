@@ -108,6 +108,9 @@ jobs:
             models=models
             assets=assets
 
+          user-package-configuration-file: |
+            resampy-nuitka-package.config.yml
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
