@@ -66,6 +66,13 @@ parser.add_argument(
     help="If present, Print RAW values"
 )
 
+
+parser.add_argument(
+    "--aux",
+    action="store_true",
+    help="If present, show AUX values"
+)
+
 args = parser.parse_args()
 
 USE_MACRO_GENRES = args.macro
@@ -79,13 +86,16 @@ DEVICE_INDEX = args.device_index
 CHANNELS = args.channels
 
 PRINT_RAW = args.show_raw
+AUX = args.aux
 
 buffer = np.zeros(0, dtype=np.float32)
 
 clf = EffnetClassifier(root_path("models"))
-aux_classifiers = [
-    AuxClassifier("models/danceability-musicnn-msd-1.pb", "danceability"),
-]
+
+if AUX:
+    aux_classifiers = [
+        AuxClassifier("models/danceability-musicnn-msd-1.pb", "danceability"),
+    ]
 
 
 smooth = GenreSmoother(clf.labels, SMOOTHING_ALPHA)
@@ -167,14 +177,16 @@ def on_audio(audio):
 
         osc.send(top5)
 
-    aux_results = {}
-    for aux in aux_classifiers:
-        val = aux.classify(segment)
-        if val is not None:
-            aux_results[aux.label] = val
+    # AUX
+    if AUX:
+        aux_results = {}
+        for aux in aux_classifiers:
+            val = aux.classify(segment)
+            if val is not None:
+                aux_results[aux.label] = val
 
-    print("AUX:", " | ".join(f"{k}:{v:.3f}" for k, v in aux_results.items()))
-    osc.send([(k, v) for k, v in aux_results.items()])
+        print("AUX:", " | ".join(f"{k}:{v:.3f}" for k, v in aux_results.items()))
+        osc.send([(k, v) for k, v in aux_results.items()])
 
     buffer = buffer[-HOP:]  # advance hop
 
