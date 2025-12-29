@@ -1,4 +1,0 @@
-- module-name: 'resampy'
-  data-files:
-    raw_dirs:
-      - 'data'
