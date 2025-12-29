@@ -39,3 +39,18 @@ class EffnetClassifier:
             return None
 
         return probs
+
+class AuxClassifier:
+    def __init__(self, model_path, label):
+        self.model = TensorflowPredict2D(
+            graphFilename=model_path,
+            input="serving_default_input",
+            output="StatefulPartitionedCall"
+        )
+        self.label = label
+
+    def classify(self, audio):
+        preds = self.model(audio)
+        if preds is None or len(preds) == 0:
+            return None
+        return float(preds.mean())

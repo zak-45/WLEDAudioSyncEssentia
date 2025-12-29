@@ -5,7 +5,7 @@ import argparse
 from configmanager import *
 
 from audio_stream import AudioStream
-from effnet_classifier import EffnetClassifier
+from effnet_classifier import EffnetClassifier, AuxClassifier
 from smoothing import GenreSmoother
 from osc_sender import OSCSender
 from rms import rms
@@ -83,6 +83,11 @@ PRINT_RAW = args.show_raw
 buffer = np.zeros(0, dtype=np.float32)
 
 clf = EffnetClassifier(root_path("models"))
+aux_classifiers = [
+    AuxClassifier("models/danceability-musicnn-msd-1.pb", "danceability"),
+]
+
+
 smooth = GenreSmoother(clf.labels, SMOOTHING_ALPHA)
 
 osc = OSCSender(
@@ -161,6 +166,15 @@ def on_audio(audio):
               " | ".join(f"{g}:{v:.3f}" for g, v in top5))
 
         osc.send(top5)
+
+    aux_results = {}
+    for aux in aux_classifiers:
+        val = aux.classify(segment)
+        if val is not None:
+            aux_results[aux.label] = val
+
+    print("AUX:", " | ".join(f"{k}:{v:.3f}" for k, v in aux_results.items()))
+    osc.send([(k, v) for k, v in aux_results.items()])
 
     buffer = buffer[-HOP:]  # advance hop
 

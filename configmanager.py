@@ -44,7 +44,7 @@ def root_path(filename):
                 Expected way to work.
                 """
                 # Nuitka compressed version extract binaries to "WLEDVideoSync" folder (as set in the GitHub action)
-                base_path = os.path.join(os.path.dirname(sys.argv[0]), 'WLEDVideoSync')
+                base_path = os.path.join(os.path.dirname(sys.argv[0]), 'WLEDAudioSyncEssentia')
             else:
                 base_path = os.path.dirname(sys.argv[0])
             return os.path.join(base_path, filename)
