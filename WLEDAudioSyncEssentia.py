@@ -1,5 +1,6 @@
 import numpy as np
 import resampy
+import argparse
 
 from configmanager import *
 
@@ -9,11 +10,7 @@ from smoothing import GenreSmoother
 from osc_sender import OSCSender
 from rms import rms
 from config import *
-
-
 from macro_genres import collapse_to_macro
-
-import argparse
 
 parser = argparse.ArgumentParser()
 
@@ -156,6 +153,7 @@ def on_audio(audio):
         osc.send(top5)
 
     else:
+
         smooth.update(probs)
         top5 = smooth.top_n(5)
 
