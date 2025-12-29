@@ -1,12 +1,15 @@
 import numpy as np
 import resampy
 
+from configmanager import *
+
 from audio_stream import AudioStream
 from effnet_classifier import EffnetClassifier
 from smoothing import GenreSmoother
 from osc_sender import OSCSender
 from rms import rms
 from config import *
+
 
 from macro_genres import collapse_to_macro
 
@@ -82,7 +85,7 @@ PRINT_RAW = args.show_raw
 
 buffer = np.zeros(0, dtype=np.float32)
 
-clf = EffnetClassifier("models")
+clf = EffnetClassifier(root_path("models"))
 smooth = GenreSmoother(clf.labels, SMOOTHING_ALPHA)
 
 osc = OSCSender(
