@@ -2,6 +2,6 @@ numpy==2.3.0
 pyaudio
 python-osc
 essentia-tensorflow ; sys_platform != "win32"
-resampy
 six
 imageio
+soxr

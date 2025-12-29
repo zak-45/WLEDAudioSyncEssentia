@@ -4,6 +4,7 @@ import argparse
 
 from configmanager import *
 
+from utils import resample
 from audio_stream import AudioStream
 from effnet_classifier import EffnetClassifier, AuxClassifier
 from smoothing import GenreSmoother
@@ -127,7 +128,7 @@ def on_audio(audio):
         audio = audio.reshape(-1, 2).mean(axis=1)
 
     # resample
-    audio = resampy.resample(audio, AUDIO_DEVICE_RATE, MODEL_SAMPLE_RATE)
+    audio = resample(audio, AUDIO_DEVICE_RATE, MODEL_SAMPLE_RATE)
 
     buffer = np.concatenate([buffer, audio])
 
