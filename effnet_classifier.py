@@ -1,3 +1,4 @@
+import json
 import numpy as np
 from essentia.standard import TensorflowPredictEffnetDiscogs, TensorflowPredict2D
 from labels import load_genre_labels
@@ -40,17 +41,46 @@ class EffnetClassifier:
 
         return probs
 
-class AuxClassifier:
-    def __init__(self, model_path, label):
-        self.model = TensorflowPredict2D(
-            graphFilename=model_path,
-            input="serving_default_input",
-            output="StatefulPartitionedCall"
-        )
-        self.label = label
+    def compute_embeddings(self, audio):
+        audio = np.asarray(audio, dtype=np.float32)
+        return self.effnet(audio)
 
-    def classify(self, audio):
-        preds = self.model(audio)
-        if preds is None or len(preds) == 0:
+
+class AuxClassifier:
+    def __init__(self, model_pb, model_json, agg="mean"):
+        self.agg = agg
+
+        with open(model_json, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        self.labels = meta.get("classes", meta.get("labels"))
+
+        # Use TensorflowPredict2D to avoid 'cppPool' errors with TensorflowPredict and numpy arrays
+        self.model = TensorflowPredict2D(
+            graphFilename=model_pb,
+            input="model/Placeholder",
+            output="model/Softmax"
+        )
+
+    def classify(self, embeddings):
+        """
+        embeddings: np.ndarray (frames, 1280)
+        returns: dict {label: prob}
+        """
+        if embeddings is None or len(embeddings) == 0:
             return None
-        return float(preds.mean())
+
+        embeddings = np.asarray(embeddings)
+
+        # Pool embeddings over time
+        if embeddings.ndim == 2:
+            pooled = embeddings.mean(axis=0)  # (1280,)
+        else:
+            pooled = embeddings               # already (1280,)
+
+        pooled = pooled.astype(np.float32)
+        # Reshape to (1, 1280) for TensorflowPredict2D
+        pooled = pooled.reshape(1, -1)
+
+        preds = self.model(pooled)
+        preds = np.asarray(preds).flatten()
+        return dict(zip(self.labels, preds))

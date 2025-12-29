@@ -94,9 +94,9 @@ clf = EffnetClassifier(root_path("models"))
 
 if AUX:
     aux_classifiers = [
-        AuxClassifier("models/danceability-musicnn-msd-1.pb", "danceability"),
+        AuxClassifier("models/danceability-discogs-effnet-1.pb", "models/danceability-discogs-effnet-1.json"),
+        AuxClassifier("models/nsynth_instrument-discogs-effnet-1.pb", "models/nsynth_instrument-discogs-effnet-1.json")
     ]
-
 
 smooth = GenreSmoother(clf.labels, SMOOTHING_ALPHA)
 
@@ -180,10 +180,11 @@ def on_audio(audio):
     # AUX
     if AUX:
         aux_results = {}
+        embeddings = clf.compute_embeddings(segment)
         for aux in aux_classifiers:
-            val = aux.classify(segment)
-            if val is not None:
-                aux_results[aux.label] = val
+            results = aux.classify(embeddings)
+            if results is not None:
+                aux_results.update(results)
 
         print("AUX:", " | ".join(f"{k}:{v:.3f}" for k, v in aux_results.items()))
         osc.send([(k, v) for k, v in aux_results.items()])
