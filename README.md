@@ -1,23 +1,29 @@
 # WLEDAudioSyncEssentia
 
-Real-time audio analysis and genre classification using the [Essentia](https://essentia.upf.edu/) library to synchronize and control [WLED](https://kno.wled.ge/) lighting effects.
+Real-time audio analysis and genre classification using the [Essentia](https://essentia.upf.edu/) library. This tool captures audio, detects musical genres and moods, and sends the data via **OSC (Open Sound Control)**, allowing for synchronization with lighting systems like [WLED](https://kno.wled.ge/) (via an OSC bridge), visualizers like TouchDesigner, or other creative coding platforms.
 
 ## Overview
 
-This project captures real-time audio input, analyzes it using Essentia's machine learning models to determine the musical genre, and automatically switches WLED presets or effects to match the mood of the music.
+This project captures real-time audio input, analyzes it using Essentia's machine learning models (EffNet) to determine the musical genre, and broadcasts the results over the network.
 
 ## Features
 
-*   **Real-time Audio Capture**: Listens to system audio or microphone input.
-*   **Genre Classification**: Uses Essentia's pre-trained TensorFlow models to detect genres (e.g., Rock, Electronic, Hip Hop, Jazz) on the fly.
-*   **WLED Integration**: Sends JSON/UDP commands to a WLED controller to change presets based on the detected genre.
-*   **Smoothing**: Implements buffer logic to prevent rapid flickering between genres.
+*   **Real-time Audio Capture**: Listens to system audio or microphone input via PyAudio.
+*   **Deep Learning Analysis**: Uses Essentia's TensorFlow models for high-accuracy genre detection.
+*   **Macro Genre Support**: Option to collapse specific subgenres (e.g., "Deep House") into broad categories (e.g., "Electronic").
+*   **Auxiliary Classifiers**: Optional analysis for:
+    *   Danceability
+    *   Mood (Happy, Sad, Relaxed)
+    *   Instrumentation
+    *   Musical Themes
+*   **OSC Output**: Broadcasts classification results over UDP to any OSC-compatible receiver.
+*   **Adaptive Smoothing**: Implements buffer logic to prevent rapid flickering between predictions.
 
 ## Prerequisites
 
 *   **Python 3.8+**
-*   **WLED Controller**: An ESP32 or ESP8266 running WLED, connected to the same network.
-*   **Essentia**: The audio analysis library.
+*   **Essentia**: The audio analysis library with TensorFlow support.
+*   **OSC Receiver**: A target application (e.g., TouchDesigner, Resolume, or a custom WLED bridge) to receive the `/genre` messages.
 
 ## Installation
 
@@ -30,36 +36,64 @@ This project captures real-time audio input, analyzes it using Essentia's machin
 2.  **Install Dependencies:**
     It is recommended to use a virtual environment.
     ```bash
-    pip install numpy requests sounddevice
+    pip install numpy pyaudio python-osc
     # Install Essentia with TensorFlow support
     pip install essentia-tensorflow
     ```
 
 3.  **Download Models:**
-    Download the required genre classification models (e.g., `genre_discogs400-discogs-effnet-1.pb` and its metadata) from the Essentia Models repository and place them in a `models/` directory within the project.
+    Create a `models/` directory in the project root. Download the following models (and their `.json` metadata) from the Essentia Models repository:
+
+    **Required:**
+    *   `discogs-effnet-bs64-1.pb`
+    *   `genre_discogs400-discogs-effnet-1.pb`
+    *   `genre_discogs400-discogs-effnet-1.json`
+
+    **Optional (for --aux):**
+    *   `danceability-discogs-effnet-1.pb` (+ .json)
+    *   `mood_happy-discogs-effnet-1.pb` (+ .json)
+    *   `mood_relaxed-discogs-effnet-1.pb` (+ .json)
+    *   `mood_sad-discogs-effnet-1.pb` (+ .json)
+    *   `nsynth_instrument-discogs-effnet-1.pb` (+ .json)
+    *   `mtg_jamendo_top50tags-discogs-effnet-1.pb` (+ .json)
+    *   `mtg_jamendo_moodtheme-discogs-effnet-1.pb` (+ .json)
+
+## Usage
+
+Run the main script to start listening and analyzing.
+
+### Basic Usage
+```bash
+python WLEDAudioSyncEssentia.py
+```
+By default, this sends OSC messages to `127.0.0.1:12000` at path `/genre`.
+
+### Advanced Usage
+
+**Enable Macro Genres (e.g., "Rock" instead of "Punk Rock"):**
+```bash
+python WLEDAudioSyncEssentia.py --macro
+```
+
+**Enable Auxiliary Classifiers (Mood, Danceability, etc.):**
+```bash
+python WLEDAudioSyncEssentia.py --aux
+```
+
+**Custom OSC Target:**
+```bash
+python WLEDAudioSyncEssentia.py --osc-ip 192.168.1.50 --osc-port 8000
+```
 
 ## Configuration
 
-Update the configuration variables in your main script or `config.py`:
+You can fine-tune audio buffering and smoothing in `config.py`:
 
 ```python
-# WLED Configuration
-WLED_IP = "192.168.1.100"  # Replace with your WLED IP
-
-# Audio Configuration
-SAMPLE_RATE = 16000
-BUFFER_SIZE = 512
-
-# Genre to WLED Preset Mapping
-# Key: Genre Label, Value: WLED Preset ID
-GENRE_MAPPING = {
-    "Electronic": 1,
-    "Rock": 2,
-    "Hip Hop": 3,
-    "Jazz": 4,
-    "Classical": 5,
-    "Pop": 6
-}
+MODEL_SAMPLE_RATE = 16000
+BUFFER_SECONDS = 2.5      # Minimum buffer for analysis
+HOP_SECONDS = 0.5         # Analysis interval
+SMOOTHING_ALPHA = 0.4     # Smoothing factor for predictions
 ```
 
 ## Usage
