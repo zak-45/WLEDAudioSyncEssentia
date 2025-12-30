@@ -14,7 +14,11 @@ class AudioStream:
 
     def audio_callback(self, in_data, frame_count, time_info, status):
         audio = np.frombuffer(in_data, dtype=np.float32)
-        self.callback(audio)
+
+        # REAL-TIME RMS (no buffering)
+        rms = np.sqrt(np.mean(audio ** 2))
+
+        self.callback(audio, rms)
         return (None, pyaudio.paContinue)
 
     def start(self):

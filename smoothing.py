@@ -20,3 +20,6 @@ class GenreSmoother:
             return []
         idx = np.argsort(self.state)[::-1][:n]
         return [(self.labels[i], float(self.state[i])) for i in idx]
+
+    def reset(self):
+        self.state[:] = 0.0

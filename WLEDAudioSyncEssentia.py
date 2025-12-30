@@ -1,5 +1,6 @@
 import numpy as np
 import argparse
+import time
 
 from configmanager import *
 
@@ -8,9 +9,22 @@ from audio_stream import AudioStream
 from effnet_classifier import EffnetClassifier, AuxClassifier
 from smoothing import GenreSmoother
 from osc_sender import OSCSender
-from rms import rms
 from config import *
 from macro_genres import collapse_to_macro
+
+from adaptive_buffer import AdaptiveBuffer
+
+is_silent = False
+last_non_silent_time = time.time()
+
+SILENCE_TIMEOUT = 0.75  # seconds
+
+adaptive = AdaptiveBuffer(
+    MIN_BUFFER_SECONDS,
+    MAX_BUFFER_SECONDS,
+    BUFFER_SECONDS
+)
+
 
 parser = argparse.ArgumentParser()
 
@@ -111,16 +125,59 @@ print(
 )
 
 
-NEEDED = int(MODEL_SAMPLE_RATE * BUFFER_SECONDS)
+#NEEDED = int(MODEL_SAMPLE_RATE * BUFFER_SECONDS)
+NEEDED = int(MODEL_SAMPLE_RATE * adaptive.current)
+
 HOP = int(MODEL_SAMPLE_RATE * HOP_SECONDS)
 
 def top_n_from_probs(probs, labels, n=5):
     idx = probs.argsort()[::-1][:n]
     return [(labels[i], float(probs[i])) for i in idx]
 
+def enter_silence():
+    global buffer, is_silent
+    is_silent = True
 
-def on_audio(audio):
+    buffer = np.zeros(0, dtype=np.float32)
+    smooth.reset()
+    adaptive.reset()
+    adaptive.current = MIN_BUFFER_SECONDS
+
+    osc.send_silence()
+
+    print("🔇 SILENCE → state reset")
+
+
+def exit_silence():
+    global is_silent
+    is_silent = False
+    print("🎵 AUDIO RESUMED")
+
+
+
+def handle_silence():
     global buffer
+
+    # Clear buffer completely
+    buffer = np.zeros(0, dtype=np.float32)
+
+    # Reset smoother
+    smooth.reset()
+
+    # Reset adaptive buffer
+    adaptive.reset()
+    adaptive.current = MIN_BUFFER_SECONDS
+
+    # OPTIONAL: send explicit OSC silence
+    osc.send_silence()
+
+    # Debug (optional)
+    print("🔇 SILENCE → state reset")
+
+
+
+def on_audio(audio, rms_rt):
+    global buffer, last_non_silent_time
 
     # stereo → mono
     if audio.size % 2 == 0:
@@ -136,58 +193,85 @@ def on_audio(audio):
 
     segment = buffer[-NEEDED:]
 
-    if rms(segment) < MIN_RMS:
-        return  # freeze state on silence
+    # silent
+    now = time.time()
+
+    if rms_rt < MIN_RMS:
+        if not is_silent and (now - last_non_silent_time) >= SILENCE_TIMEOUT:
+            enter_silence()
+        return
+    else:
+        last_non_silent_time = now
+        if is_silent:
+            exit_silence()
 
     probs = clf.classify(segment)
     if probs is None:
         return
 
-    if PRINT_RAW:
-        print("RAW max:", probs.max())
+    if not is_silent:
 
-        raw_top5 = top_n_from_probs(probs, clf.labels, 5)
+        if PRINT_RAW:
+            print("RAW max:", probs.max())
 
-        print("RAW TOP5:",
-              " | ".join(f"{g}:{v:.4f}" for g, v in raw_top5))
+            raw_top5 = top_n_from_probs(probs, clf.labels, 5)
+
+            print("RAW TOP5:",
+                  " | ".join(f"{g}:{v:.4f}" for g, v in raw_top5))
 
 
-    if USE_MACRO_GENRES:
-        macro_probs = collapse_to_macro(probs, clf.labels, agg=MACRO_AGG)
+        if USE_MACRO_GENRES:
+            macro_probs = collapse_to_macro(probs, clf.labels, agg=MACRO_AGG)
 
-        # top-5 macro genres
-        top5 = sorted(
-            macro_probs.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )[:5]
+            # top-5 macro genres
+            top5 = sorted(
+                macro_probs.items(),
+                key=lambda x: x[1],
+                reverse=True
+            )[:5]
 
-        print("MACRO TOP5:",
-              " | ".join(f"{g}:{v:.3f}" for g, v in top5))
+            top_label, top_conf = top5[0]
 
-        osc.send(top5)
+            adaptive.update(
+                top_label=top_label,
+                confidence=top_conf,
+                silent=False
+            )
 
-    else:
+            print("MACRO TOP5:",
+                  " | ".join(f"{g}:{v:.3f}" for g, v in top5))
 
-        smooth.update(probs)
-        top5 = smooth.top_n(5)
+            osc.send(top5)
 
-        print("TOP5:",
-              " | ".join(f"{g}:{v:.3f}" for g, v in top5))
+        else:
 
-        osc.send(top5)
+            smooth.update(probs)
+            top5 = smooth.top_n(5)
 
-    # AUX
-    if AUX:
-        aux_results = {}
-        embeddings = clf.compute_embeddings(segment)
-        for aux in aux_classifiers:
-            results = aux.classify(embeddings)
-            if results is not None:
-                aux_results.update(results)
+            top_label, top_conf = top5[0]
 
-        print("AUX:", " | ".join(f"{k}:{v:.3f}" for k, v in aux_results.items()))
-        osc.send([(k, v) for k, v in aux_results.items()])
+            adaptive.update(
+                top_label=top_label,
+                confidence=top_conf,
+                silent=False
+            )
+
+            print("TOP5:",
+                  " | ".join(f"{g}:{v:.3f}" for g, v in top5))
+
+            osc.send(top5)
+
+        # AUX
+        if AUX:
+            aux_results = {}
+            embeddings = clf.compute_embeddings(segment)
+            for aux in aux_classifiers:
+                results = aux.classify(embeddings)
+                if results is not None:
+                    aux_results.update(results)
+
+            print("AUX:", " | ".join(f"{k}:{v:.3f}" for k, v in aux_results.items()))
+            osc.send([(k, v) for k, v in aux_results.items()])
 
     buffer = buffer[-HOP:]  # advance hop
 

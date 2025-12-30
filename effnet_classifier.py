@@ -73,9 +73,16 @@ class AuxClassifier:
 
         # Pool embeddings over time
         if embeddings.ndim == 2:
+            if self.agg == "max":
+                pooled = embeddings.max(axis=0)
+            else:
+                pooled = embeddings.mean(axis=0)
+        """
+        if embeddings.ndim == 2:
             pooled = embeddings.mean(axis=0)  # (1280,)
         else:
             pooled = embeddings               # already (1280,)
+        """
 
         pooled = pooled.astype(np.float32)
         # Reshape to (1, 1280) for TensorflowPredict2D
@@ -83,4 +90,7 @@ class AuxClassifier:
 
         preds = self.model(pooled)
         preds = np.asarray(preds).flatten()
+        # Not strictly required, but safe for OSC consumers.
+        preds = np.clip(preds, 0.0, 1.0)
+
         return dict(zip(self.labels, preds))

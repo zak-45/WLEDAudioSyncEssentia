@@ -14,3 +14,6 @@ class OSCSender:
                 f"{self.path}/{label.replace(' ', '_').replace('&', 'and')}",
                 float(value)
             )
+
+    def send_silence(self):
+        self.client.send_message("/genre", [])
