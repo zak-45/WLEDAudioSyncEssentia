@@ -212,6 +212,8 @@ def on_audio(audio, rms_rt):
 
     if not is_silent:
 
+        print('_' * 80)
+
         if PRINT_RAW:
             print("RAW max:", probs.max())
 
@@ -264,6 +266,7 @@ def on_audio(audio, rms_rt):
 
         # AUX
         if AUX:
+            print('_' * 80)
             aux_results = {}
             embeddings = clf.compute_embeddings(segment)
             for aux in aux_classifiers:
@@ -276,7 +279,7 @@ def on_audio(audio, rms_rt):
                         key=lambda x: x[1],
                         reverse=True
                     )
-                    #print("AUX:", " | ".join(f"{k}:{v:.3f}" for k, v in aux_results_sorted.items()))
+                    print('_|_')
                     print("AUX:", " | ".join(f"{k}:{v:.3f}" for k, v in aux_results_sorted))
                     osc.send([(k, v) for k, v in aux_results.items()])
                     aux_results.clear()
