@@ -108,9 +108,20 @@ clf = EffnetClassifier(root_path("models"))
 
 if AUX:
     aux_classifiers = [
-        AuxClassifier("models/danceability-discogs-effnet-1.pb", "models/danceability-discogs-effnet-1.json", "model/Softmax"),
-        AuxClassifier("models/nsynth_instrument-discogs-effnet-1.pb", "models/nsynth_instrument-discogs-effnet-1.json", "model/Softmax"),
-        AuxClassifier("models/mtg_jamendo_top50tags-discogs-effnet-1.pb", "models/mtg_jamendo_top50tags-discogs-effnet-1.json", "model/Sigmoid")
+        AuxClassifier("models/danceability-discogs-effnet-1.pb",
+                      "models/danceability-discogs-effnet-1.json", "model/Softmax"),
+        AuxClassifier("models/mood_happy-discogs-effnet-1.pb",
+                      "models/mood_happy-discogs-effnet-1.json", "model/Softmax"),
+        AuxClassifier("models/mood_relaxed-discogs-effnet-1.pb",
+                      "models/mood_relaxed-discogs-effnet-1.json", "model/Softmax"),
+        AuxClassifier("models/mood_sad-discogs-effnet-1.pb",
+                      "models/mood_sad-discogs-effnet-1.json", "model/Softmax"),
+        AuxClassifier("models/nsynth_instrument-discogs-effnet-1.pb",
+                      "models/nsynth_instrument-discogs-effnet-1.json", "model/Softmax"),
+        AuxClassifier("models/mtg_jamendo_top50tags-discogs-effnet-1.pb",
+                      "models/mtg_jamendo_top50tags-discogs-effnet-1.json", "model/Sigmoid"),
+        AuxClassifier("models/mtg_jamendo_moodtheme-discogs-effnet-1.pb",
+                      "models/mtg_jamendo_moodtheme-discogs-effnet-1.json", "model/Sigmoid")
     ]
 
 smooth = GenreSmoother(clf.labels, SMOOTHING_ALPHA)
@@ -174,8 +185,6 @@ def handle_silence():
 
     # Debug (optional)
     print("🔇 SILENCE → state reset")
-
-
 
 def on_audio(audio, rms_rt):
     global buffer, last_non_silent_time

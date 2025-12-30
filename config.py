@@ -1,7 +1,7 @@
 AUDIO_DEVICE_RATE = 44100      # Stereo Mix rate
 MODEL_SAMPLE_RATE = 16000
 
-BUFFER_SECONDS = 3.0 # min value for genre
+BUFFER_SECONDS = 2.5 # min value for genre
 HOP_SECONDS = 0.5
 
 MIN_RMS = 0.002
