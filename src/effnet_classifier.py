@@ -1,7 +1,7 @@
 import json
 import numpy as np
 from essentia.standard import TensorflowPredictEffnetDiscogs, TensorflowPredict2D
-from labels import load_genre_labels
+from src.labels import load_genre_labels
 
 class EffnetClassifier:
     def __init__(self, model_dir):

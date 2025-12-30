@@ -4,15 +4,15 @@ import time
 
 from configmanager import *
 
-from utils import resample
-from audio_stream import AudioStream
-from effnet_classifier import EffnetClassifier, AuxClassifier
-from smoothing import GenreSmoother
-from osc_sender import OSCSender
+from src.utils import resample
+from src.audio_stream import AudioStream
+from src.effnet_classifier import EffnetClassifier, AuxClassifier
+from src.smoothing import GenreSmoother
+from src.osc_sender import OSCSender
 from config import *
-from macro_genres import collapse_to_macro
+from src.macro_genres import collapse_to_macro
 
-from adaptive_buffer import AdaptiveBuffer
+from src.adaptive_buffer import AdaptiveBuffer
 
 is_silent = False
 last_non_silent_time = time.time()
@@ -103,7 +103,7 @@ PRINT_RAW = args.show_raw
 AUX = args.aux
 
 buffer = np.zeros(0, dtype=np.float32)
-
+print(root_path("models"))
 clf = EffnetClassifier(root_path("models"))
 
 if AUX:
