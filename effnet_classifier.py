@@ -47,7 +47,7 @@ class EffnetClassifier:
 
 
 class AuxClassifier:
-    def __init__(self, model_pb, model_json, agg="mean"):
+    def __init__(self, model_pb, model_json, model_output, agg="mean"):
         self.agg = agg
 
         with open(model_json, "r", encoding="utf-8") as f:
@@ -58,7 +58,7 @@ class AuxClassifier:
         self.model = TensorflowPredict2D(
             graphFilename=model_pb,
             input="model/Placeholder",
-            output="model/Softmax"
+            output=model_output
         )
 
     def classify(self, embeddings):

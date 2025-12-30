@@ -108,8 +108,9 @@ clf = EffnetClassifier(root_path("models"))
 
 if AUX:
     aux_classifiers = [
-        AuxClassifier("models/danceability-discogs-effnet-1.pb", "models/danceability-discogs-effnet-1.json"),
-        AuxClassifier("models/nsynth_instrument-discogs-effnet-1.pb", "models/nsynth_instrument-discogs-effnet-1.json")
+        AuxClassifier("models/danceability-discogs-effnet-1.pb", "models/danceability-discogs-effnet-1.json", "model/Softmax"),
+        AuxClassifier("models/nsynth_instrument-discogs-effnet-1.pb", "models/nsynth_instrument-discogs-effnet-1.json", "model/Softmax"),
+        AuxClassifier("models/mtg_jamendo_top50tags-discogs-effnet-1.pb", "models/mtg_jamendo_top50tags-discogs-effnet-1.json", "model/Sigmoid")
     ]
 
 smooth = GenreSmoother(clf.labels, SMOOTHING_ALPHA)
@@ -269,9 +270,16 @@ def on_audio(audio, rms_rt):
                 results = aux.classify(embeddings)
                 if results is not None:
                     aux_results.update(results)
-
-            print("AUX:", " | ".join(f"{k}:{v:.3f}" for k, v in aux_results.items()))
-            osc.send([(k, v) for k, v in aux_results.items()])
+                    # sort by value
+                    aux_results_sorted = sorted(
+                        aux_results.items(),
+                        key=lambda x: x[1],
+                        reverse=True
+                    )
+                    #print("AUX:", " | ".join(f"{k}:{v:.3f}" for k, v in aux_results_sorted.items()))
+                    print("AUX:", " | ".join(f"{k}:{v:.3f}" for k, v in aux_results_sorted))
+                    osc.send([(k, v) for k, v in aux_results.items()])
+                    aux_results.clear()
 
     buffer = buffer[-HOP:]  # advance hop
 
