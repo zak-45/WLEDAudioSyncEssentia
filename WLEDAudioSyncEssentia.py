@@ -6,6 +6,7 @@ import time
 
 from configmanager import *
 from config import *
+from configmanager import root_path
 
 from src.utils import resample, compute_color
 from src.audio_stream import AudioStream
@@ -15,13 +16,9 @@ from src.macro_genres import collapse_to_macro
 
 from src.model_loader import discover_models
 from src.effnet_classifier import EffnetClassifier, AuxClassifier
-from src.osc_schema import OscModelSchema
 
 from src.adaptive_buffer import AdaptiveBuffer
-
-
 from src.mood_color_mapper import MoodColorMapper
-mood_mapper = MoodColorMapper("models/genre_discogs400-discogs-effnet-1.json")
 
 parser = argparse.ArgumentParser()
 
@@ -101,7 +98,7 @@ NEEDED = int(MODEL_SAMPLE_RATE * adaptive.current)
 
 HOP = int(MODEL_SAMPLE_RATE * HOP_SECONDS)
 
-MODELS_DIR = "models"
+MODELS_DIR = root_path("models")
 
 USE_MACRO_GENRES = args.macro
 MACRO_AGG = args.macro_agg
@@ -138,6 +135,9 @@ print(
 # Genre Color
 g_brightness = 255 # default, calculate from danceability if available Energy → brightness (value)
 g_saturation = 255 # default, calculate from top genre min(1.0, top1_prob * 1.5)
+
+# mood color
+mood_mapper = MoodColorMapper("models/genre_discogs400-discogs-effnet-1.json")
 
 
 def top_n_from_probs(probs, labels, n=5):
@@ -290,7 +290,7 @@ def on_audio(audio, rms_rt):
             osc.send("/WASEssentia/genre/color/g", g / 255.0)
             osc.send("/WASEssentia/genre/color/b", b / 255.0)
 
-        # --- TOP GENRES (already computed by you) ---
+        # --- TOP GENRES (already computed) ---
         # top_genres = [('Latin---Reggaeton', 0.623), ('Hip Hop---Trap', 0.135), ...]
 
         top1_label, top1_prob = top5[0]
@@ -330,24 +330,29 @@ def on_audio(audio, rms_rt):
 
 if __name__ == "__main__":
 
+    # fetch all models from folder
     models = discover_models(MODELS_DIR)
-
+    #
     aux_classifiers = []
-
+    # load models and set them to list for type AUX
     for m in models:
         if m["type"] == "genre":
 
             print(f"🎵 Genre model loaded: {m['name']}")
 
         else:
+
             aux_classifiers.append(
                 AuxClassifier(m["name"], m["pb"], m["json"], m["output_name"], agg=MACRO_AGG)
             )
 
             print(f"🎛 Aux model loaded: {m['name']}")
 
+    # Read audio, blocking call
     AudioStream(
         on_audio,
         device_index=DEVICE_INDEX,
         channels=CHANNELS
     ).start()
+
+    print('End WLEDAudioSyncEssentia')
