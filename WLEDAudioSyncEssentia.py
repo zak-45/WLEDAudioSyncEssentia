@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import argparse
 import time
@@ -16,6 +18,10 @@ from src.effnet_classifier import EffnetClassifier, AuxClassifier
 from src.osc_schema import OscModelSchema
 
 from src.adaptive_buffer import AdaptiveBuffer
+
+
+from src.mood_color_mapper import MoodColorMapper
+mood_mapper = MoodColorMapper("models/genre_discogs400-discogs-effnet-1.json")
 
 parser = argparse.ArgumentParser()
 
@@ -228,22 +234,22 @@ def on_audio(audio, rms_rt):
             macro_probs = collapse_to_macro(probs, clf.labels, agg=MACRO_AGG)
 
             # top-5 macro genres
-            top5 = sorted(
+            top5_macro = sorted(
                 macro_probs.items(),
                 key=lambda x: x[1],
                 reverse=True
             )[:5]
 
-            top_label, top_conf = top5[0]
+            top_label_macro, top_conf_macro = top5_macro[0]
 
             adaptive.update(
-                top_label=top_label,
-                confidence=top_conf,
+                top_label=top_label_macro,
+                confidence=top_conf_macro,
                 silent=False
             )
 
             print("MACRO TOP5:",
-                  " | ".join(f"{g}:{v:.5f}" for g, v in top5))
+                  " | ".join(f"{g}:{v:.5f}" for g, v in top5_macro))
 
             i=0
             for label, value in top5:
@@ -259,8 +265,8 @@ def on_audio(audio, rms_rt):
                 results = aux.classify(embeddings)
                 if results is not None:
                     aux_results.update(results)
-                    if aux.name == 'danceability':
-                        g_brightness = max(0.1, min(1.0, aux_results[0][0]))
+                    if aux.name == 'danceability classifier':
+                        g_brightness = max(0.1, min(1.0, float(aux_results.get('danceable'))))
                     # sort by value
                     aux_results_sorted = sorted(
                         aux_results.items(),
@@ -283,6 +289,41 @@ def on_audio(audio, rms_rt):
             osc.send("/WASEssentia/genre/color/r", r / 255.0)
             osc.send("/WASEssentia/genre/color/g", g / 255.0)
             osc.send("/WASEssentia/genre/color/b", b / 255.0)
+
+        # --- TOP GENRES (already computed by you) ---
+        # top_genres = [('Latin---Reggaeton', 0.623), ('Hip Hop---Trap', 0.135), ...]
+
+        top1_label, top1_prob = top5[0]
+
+        # --------------------------------------------------
+        # Mood computation
+        # --------------------------------------------------
+        valence = mood_mapper.compute_valence(top5)
+        energy = mood_mapper.compute_energy(g_brightness)
+
+        r, g, b = mood_mapper.mood_to_rgb(
+            valence=valence,
+            energy=energy,
+            confidence=top1_prob
+        )
+
+        # --------------------------------------------------
+        # OSC JSON (Chataigne friendly)
+        # --------------------------------------------------
+        osc_color_data = {
+            "valence": round(valence, 3),
+            "energy": round(energy, 3),
+            "R": r,
+            "G": g,
+            "B": b
+        }
+
+        print('Mood  color:', r,g,b)
+
+        osc.send(
+            "/WASEssentia/mood/color",
+            json.dumps(osc_color_data)
+        )
 
     buffer = buffer[-HOP:]  # advance hop
 
