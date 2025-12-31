@@ -5,15 +5,8 @@ class OSCSender:
         self.client = SimpleUDPClient(ip, port)
         self.path = path
 
-    def send(self, items):
-        """
-        items: list of (label, value)
-        """
-        for label, value in items:
-            self.client.send_message(
-                f"{self.path}/{label.replace(' ', '_').replace('&', 'and')}",
-                float(value)
-            )
+    def send(self, path, value):
+        self.client.send_message(path, value)
 
-    def send_silence(self):
-        self.client.send_message("/genre", [])
+    def send_silence(self, value):
+        self.client.send_message("/WASEssentia/silence", value)

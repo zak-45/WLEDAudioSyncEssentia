@@ -4,21 +4,21 @@ from essentia.standard import TensorflowPredictEffnetDiscogs, TensorflowPredict2
 from src.labels import load_genre_labels
 
 class EffnetClassifier:
-    def __init__(self, model_dir):
+    def __init__(self):
         self.effnet = TensorflowPredictEffnetDiscogs(
-            graphFilename=f"{model_dir}/discogs-effnet-bs64-1.pb",
+            graphFilename=f"models/discogs-effnet-bs64-1.pb",
             output="PartitionedCall:1"
         )
 
         self.classifier = TensorflowPredict2D(
-            graphFilename=f"{model_dir}/genre_discogs400-discogs-effnet-1.pb",
+            graphFilename=f"models/genre_discogs400-discogs-effnet-1.pb",
             input="serving_default_model_Placeholder",
             output="PartitionedCall:0"
         )
 
         # LOAD LABELS FROM JSON (THIS IS THE KEY FIX)
         self.labels = load_genre_labels(
-            f"{model_dir}/genre_discogs400-discogs-effnet-1.json"
+            f"models/genre_discogs400-discogs-effnet-1.json"
         )
 
         print("Number of Labels loaded:", len(self.labels))
@@ -47,11 +47,13 @@ class EffnetClassifier:
 
 
 class AuxClassifier:
-    def __init__(self, model_pb, model_json, model_output, agg="mean"):
+    def __init__(self, model_name, model_pb, model_json, model_output, agg="mean"):
         self.agg = agg
+        self.name = model_name
 
         with open(model_json, "r", encoding="utf-8") as f:
             meta = json.load(f)
+
         self.labels = meta.get("classes", meta.get("labels"))
 
         # Use TensorflowPredict2D to avoid 'cppPool' errors with TensorflowPredict and numpy arrays

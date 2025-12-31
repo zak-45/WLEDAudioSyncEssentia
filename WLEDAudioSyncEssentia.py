@@ -3,28 +3,19 @@ import argparse
 import time
 
 from configmanager import *
+from config import *
 
-from src.utils import resample
+from src.utils import resample, compute_color
 from src.audio_stream import AudioStream
-from src.effnet_classifier import EffnetClassifier, AuxClassifier
 from src.smoothing import GenreSmoother
 from src.osc_sender import OSCSender
-from config import *
 from src.macro_genres import collapse_to_macro
 
+from src.model_loader import discover_models
+from src.effnet_classifier import EffnetClassifier, AuxClassifier
+from src.osc_schema import OscModelSchema
+
 from src.adaptive_buffer import AdaptiveBuffer
-
-is_silent = False
-last_non_silent_time = time.time()
-
-SILENCE_TIMEOUT = 0.75  # seconds
-
-adaptive = AdaptiveBuffer(
-    MIN_BUFFER_SECONDS,
-    MAX_BUFFER_SECONDS,
-    BUFFER_SECONDS
-)
-
 
 parser = argparse.ArgumentParser()
 
@@ -89,6 +80,23 @@ parser.add_argument(
 
 args = parser.parse_args()
 
+is_silent = False
+last_non_silent_time = time.time()
+
+SILENCE_TIMEOUT = 0.75  # seconds
+
+adaptive = AdaptiveBuffer(
+    MIN_BUFFER_SECONDS,
+    MAX_BUFFER_SECONDS,
+    BUFFER_SECONDS
+)
+
+NEEDED = int(MODEL_SAMPLE_RATE * adaptive.current)
+
+HOP = int(MODEL_SAMPLE_RATE * HOP_SECONDS)
+
+MODELS_DIR = "models"
+
 USE_MACRO_GENRES = args.macro
 MACRO_AGG = args.macro_agg
 
@@ -103,29 +111,14 @@ PRINT_RAW = args.show_raw
 AUX = args.aux
 
 buffer = np.zeros(0, dtype=np.float32)
-print(root_path("models"))
-clf = EffnetClassifier(root_path("models"))
 
-if AUX:
-    aux_classifiers = [
-        AuxClassifier("models/danceability-discogs-effnet-1.pb",
-                      "models/danceability-discogs-effnet-1.json", "model/Softmax"),
-        AuxClassifier("models/mood_happy-discogs-effnet-1.pb",
-                      "models/mood_happy-discogs-effnet-1.json", "model/Softmax"),
-        AuxClassifier("models/mood_relaxed-discogs-effnet-1.pb",
-                      "models/mood_relaxed-discogs-effnet-1.json", "model/Softmax"),
-        AuxClassifier("models/mood_sad-discogs-effnet-1.pb",
-                      "models/mood_sad-discogs-effnet-1.json", "model/Softmax"),
-        AuxClassifier("models/nsynth_instrument-discogs-effnet-1.pb",
-                      "models/nsynth_instrument-discogs-effnet-1.json", "model/Softmax"),
-        AuxClassifier("models/mtg_jamendo_top50tags-discogs-effnet-1.pb",
-                      "models/mtg_jamendo_top50tags-discogs-effnet-1.json", "model/Sigmoid"),
-        AuxClassifier("models/mtg_jamendo_moodtheme-discogs-effnet-1.pb",
-                      "models/mtg_jamendo_moodtheme-discogs-effnet-1.json", "model/Sigmoid")
-    ]
+# Main Effnet discogs model with Music Genre Detection
+clf = EffnetClassifier()
 
+# Smoother
 smooth = GenreSmoother(clf.labels, SMOOTHING_ALPHA)
 
+# OSC Sender
 osc = OSCSender(
     ip=OSC_IP,
     port=OSC_PORT,
@@ -136,11 +129,10 @@ print(
     f"🎛 OSC → {OSC_IP}:{OSC_PORT} {OSC_PATH}"
 )
 
+# Genre Color
+g_brightness = 255 # default, calculate from danceability if available Energy → brightness (value)
+g_saturation = 255 # default, calculate from top genre min(1.0, top1_prob * 1.5)
 
-#NEEDED = int(MODEL_SAMPLE_RATE * BUFFER_SECONDS)
-NEEDED = int(MODEL_SAMPLE_RATE * adaptive.current)
-
-HOP = int(MODEL_SAMPLE_RATE * HOP_SECONDS)
 
 def top_n_from_probs(probs, labels, n=5):
     idx = probs.argsort()[::-1][:n]
@@ -155,39 +147,18 @@ def enter_silence():
     adaptive.reset()
     adaptive.current = MIN_BUFFER_SECONDS
 
-    osc.send_silence()
-
+    osc.send_silence(0)
     print("🔇 SILENCE → state reset")
-
 
 def exit_silence():
     global is_silent
     is_silent = False
+
+    osc.send_silence(1)
     print("🎵 AUDIO RESUMED")
 
-
-
-def handle_silence():
-    global buffer
-
-    # Clear buffer completely
-    buffer = np.zeros(0, dtype=np.float32)
-
-    # Reset smoother
-    smooth.reset()
-
-    # Reset adaptive buffer
-    adaptive.reset()
-    adaptive.current = MIN_BUFFER_SECONDS
-
-    # OPTIONAL: send explicit OSC silence
-    osc.send_silence()
-
-    # Debug (optional)
-    print("🔇 SILENCE → state reset")
-
 def on_audio(audio, rms_rt):
-    global buffer, last_non_silent_time
+    global buffer, last_non_silent_time, g_saturation, g_brightness
 
     # stereo → mono
     if audio.size % 2 == 0:
@@ -231,6 +202,27 @@ def on_audio(audio, rms_rt):
             print("RAW TOP5:",
                   " | ".join(f"{g}:{v:.4f}" for g, v in raw_top5))
 
+        smooth.update(probs)
+        top5 = smooth.top_n(5)
+
+        top_label, top_conf = top5[0]
+        genre_hue = top_label
+
+        adaptive.update(
+            top_label=top_label,
+            confidence=top_conf,
+            silent=False
+        )
+
+        print("GENRE TOP5:",
+              " | ".join(f"{g}:{v:.5f}" for g, v in top5))
+
+        i=0
+        for label, value in top5:
+            osc.send(f"/WASEssentia/genre/top{i}", label)
+            if i == 0:
+                g_saturation = min(1.0, value * 1.5)
+            i+=1
 
         if USE_MACRO_GENRES:
             macro_probs = collapse_to_macro(probs, clf.labels, agg=MACRO_AGG)
@@ -251,27 +243,12 @@ def on_audio(audio, rms_rt):
             )
 
             print("MACRO TOP5:",
-                  " | ".join(f"{g}:{v:.3f}" for g, v in top5))
+                  " | ".join(f"{g}:{v:.5f}" for g, v in top5))
 
-            osc.send(top5)
-
-        else:
-
-            smooth.update(probs)
-            top5 = smooth.top_n(5)
-
-            top_label, top_conf = top5[0]
-
-            adaptive.update(
-                top_label=top_label,
-                confidence=top_conf,
-                silent=False
-            )
-
-            print("TOP5:",
-                  " | ".join(f"{g}:{v:.3f}" for g, v in top5))
-
-            osc.send(top5)
+            i=0
+            for label, value in top5:
+                osc.send(f"/WASEssentia/genre/macro_top{i}/", label)
+                i+=1
 
         # AUX
         if AUX:
@@ -282,6 +259,8 @@ def on_audio(audio, rms_rt):
                 results = aux.classify(embeddings)
                 if results is not None:
                     aux_results.update(results)
+                    if aux.name == 'danceability':
+                        g_brightness = max(0.1, min(1.0, aux_results[0][0]))
                     # sort by value
                     aux_results_sorted = sorted(
                         aux_results.items(),
@@ -289,14 +268,45 @@ def on_audio(audio, rms_rt):
                         reverse=True
                     )
                     print('_|_')
-                    print("AUX:", " | ".join(f"{k}:{v:.3f}" for k, v in aux_results_sorted))
-                    osc.send([(k, v) for k, v in aux_results.items()])
+                    print(f"AUX {aux.name} =", " | ".join(f"{k}:{v:.5f}" for k, v in aux_results_sorted))
+
+                    for label, value in aux_results.items():
+                        path = f"/WASEssentia/aux/{aux.name.replace(' ', '_')}/{label.replace(' ', '_')}"
+                        osc.send(path, float(value))
+
                     aux_results.clear()
+
+            # Genre color
+            r, g, b = compute_color(genre_hue,g_saturation,g_brightness)
+            print('_|_')
+            print("Genre color:", r,g,b)
+            osc.send("/WASEssentia/genre/color/r", r / 255.0)
+            osc.send("/WASEssentia/genre/color/g", g / 255.0)
+            osc.send("/WASEssentia/genre/color/b", b / 255.0)
 
     buffer = buffer[-HOP:]  # advance hop
 
-AudioStream(
-    on_audio,
-    device_index=DEVICE_INDEX,
-    channels=CHANNELS
-).start()
+
+if __name__ == "__main__":
+
+    models = discover_models(MODELS_DIR)
+
+    aux_classifiers = []
+
+    for m in models:
+        if m["type"] == "genre":
+
+            print(f"🎵 Genre model loaded: {m['name']}")
+
+        else:
+            aux_classifiers.append(
+                AuxClassifier(m["name"], m["pb"], m["json"], m["output_name"], agg=MACRO_AGG)
+            )
+
+            print(f"🎛 Aux model loaded: {m['name']}")
+
+    AudioStream(
+        on_audio,
+        device_index=DEVICE_INDEX,
+        channels=CHANNELS
+    ).start()
