@@ -10,8 +10,10 @@ class MoodColorMapper:
     - Energy (danceability / RMS / confidence)
     """
 
-    def __init__(self, genre_json_path, mood_config_path):
+    def __init__(self, genre_json_path, mood_config_path, genre_energy_path="configs/genre_energy.json"):
+
         self.valence_weights = self._build_valence_weights(genre_json_path, mood_config_path)
+        self.genre_energy = self._load_genre_energy(genre_energy_path)
 
     # ------------------------------------------------------------
     # Valence weights auto-derived from JSON
@@ -76,12 +78,52 @@ class MoodColorMapper:
     # ------------------------------------------------------------
     # Energy → [-1, 1]
     # ------------------------------------------------------------
+    def compute_energy(
+            self,
+            danceability,
+            rms_rt,
+            top_genre,
+            confidence
+    ):
+        genre_energy = self.genre_energy.get(top_genre, 0.5)
+        rms_energy = self.rms_to_energy(rms_rt)
+
+        energy = (
+                0.45 * danceability +
+                0.35 * genre_energy +
+                0.20 * rms_energy
+        )
+
+        # boost if stable & confident
+        energy *= 0.7 + 0.3 * confidence
+
+        return float(np.clip(energy, 0.0, 1.0))
+
+    @staticmethod
+    def rms_to_energy(rms, min_rms=0.002, max_rms=0.05):
+        x = (rms - min_rms) / (max_rms - min_rms)
+        return float(np.clip(x, 0.0, 1.0))
+
+
+
+    def _load_genre_energy(self, path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    # ------------------------------------------------------------
+    # Energy → [-1, 1]
+    # ------------------------------------------------------------
+    """
     @staticmethod
     def compute_energy(danceability):
-        """
-        danceability ∈ [0,1]
-        """
+
+        #danceability ∈ [0,1]
+   
         return 2.0 * danceability - 1.0
+    """
 
     # ------------------------------------------------------------
     # Valence + Energy → RGB
@@ -121,3 +163,105 @@ class MoodColorMapper:
         energy_shift = np.interp(energy, [0, 1], [-20, 20])
 
         return (base_hue + energy_shift) % 360
+
+    # --------------------------------------------------
+    # Hue fusion
+    # --------------------------------------------------
+
+    def fuse_hues(
+        self,
+        genre_hue,
+        mood_hue,
+        confidence
+    ):
+        """
+        Circular blend between genre hue and mood hue.
+        Returns final hue in [0, 360)
+        """
+
+        """
+        # how much mood influences final hue
+        mood_weight = 0.2 + 0.5 * confidence
+        mood_weight = float(np.clip(mood_weight, 0.2, 0.7))
+        """
+
+        # mood dominates when genre confidence is LOW
+        mood_weight = 0.2 + 0.5 * (1.0 - confidence)
+        mood_weight = np.clip(mood_weight, 0.2, 0.7)
+
+        return self._circular_lerp(
+            genre_hue,
+            mood_hue,
+            mood_weight
+        )
+
+    @staticmethod
+    def _circular_lerp(h1, h2, t):
+        """
+        Interpolates hues on a color wheel
+        """
+        delta = ((h2 - h1 + 180) % 360) - 180
+        return (h1 + t * delta) % 360
+
+
+    def final_color(
+        self,
+        genre_hue,
+        mood_hue,
+        confidence,
+        energy
+    ):
+        # --- Hue fusion ---
+        final_hue = self.fuse_hues(
+            genre_hue,
+            mood_hue,
+            confidence
+        )
+
+        # --- Saturation ---
+        # genre confidence drives saturation, but bounded
+        saturation = 0.55 + 0.35 * confidence
+        saturation = np.clip(saturation, 0.5, 0.9)
+
+        # --- Value (brightness) ---
+        # energy already includes danceability + genre bias
+        value = 0.35 + 0.65 * energy
+        value = np.clip(value, 0.35, 1.0)
+
+        return self._hsv_to_rgb(
+            final_hue,
+            int(saturation * 255),
+            int(value * 255)
+        )
+
+    # --------------------------------------------------
+    # Helpers
+    # --------------------------------------------------
+
+    @staticmethod
+    def _hsv_to_rgb(h, s, v):
+        s /= 255.0
+        v /= 255.0
+
+        c = v * s
+        x = c * (1 - abs((h / 60.0) % 2 - 1))
+        m = v - c
+
+        if h < 60:
+            rp, gp, bp = c, x, 0
+        elif h < 120:
+            rp, gp, bp = x, c, 0
+        elif h < 180:
+            rp, gp, bp = 0, c, x
+        elif h < 240:
+            rp, gp, bp = 0, x, c
+        elif h < 300:
+            rp, gp, bp = x, 0, c
+        else:
+            rp, gp, bp = c, 0, x
+
+        r = int((rp + m) * 255)
+        g = int((gp + m) * 255)
+        b = int((bp + m) * 255)
+
+        return r, g, b

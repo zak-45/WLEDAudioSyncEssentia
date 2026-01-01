@@ -112,8 +112,22 @@ parser.add_argument(
     help="Print debug datas"
 )
 
+parser.add_argument(
+    "--color1",
+    action="store_true",
+    help="Choose color type 1 for final hue"
+)
+parser.add_argument(
+    "--color2",
+    action="store_true",
+    help="Choose color type 2 for final hue"
+)
+
 
 args = parser.parse_args()
+
+COLOR1=args.color1
+COLOR2=args.color2
 
 VISUAL_DEBUG = args.visual
 DEBUG_DATA = args.debug
@@ -170,12 +184,13 @@ if DEBUG_DATA:
         f"🎛 OSC → {OSC_IP}:{OSC_PORT} {OSC_PATH}"
     )
 
-# Genre Color
-g_brightness = 255 # default, calculate from danceability if available Energy → brightness (value)
-g_saturation = 255 # default, calculate from top genre min(1.0, top1_prob * 1.5)
+# Brightness & Saturation for Color
+g_brightness = 0.5 # default, calculate from  Energy
+g_saturation = 0.5 # default, calculate from top genre min(1.0, top1_prob * 1.5)
 
 # mood color, read JSON for genre labels
-mood_mapper = MoodColorMapper("models/genre_discogs400-discogs-effnet-1.json", "config/mood_valence.json")
+mood_mapper = MoodColorMapper("models/genre_discogs400-discogs-effnet-1.json",
+                              "config/mood_valence.json")
 
 def extract_macro(label):
     return label.split("---")[0]
@@ -270,9 +285,6 @@ def on_audio(audio, rms_rt):
         i=0
         for label, value in top5:
             osc.send(f"/WASEssentia/genre/top{i}", label)
-            if i == 0:
-                # take the most relevant genre (0...4)
-                g_saturation = min(1.0, value * 1.5)
             i+=1
 
         if USE_MACRO_GENRES:
@@ -335,31 +347,22 @@ def on_audio(audio, rms_rt):
 
                     aux_results.clear()
 
-        # Now, we have all datas to calculate the final color
         # --------------------------------------------------
-        # Genre color
+        # Mood computation
         # --------------------------------------------------
-        # saturation brightness  --> use default or data from AUX classifiers
-        r, g, b = compute_color(genre_hue,g_saturation,g_brightness)
-
-        if  DEBUG_DATA:
-            print('_|_')
-            print("Genre color:", r,g,b)
-
-        osc.send("/WASEssentia/genre/color/r", r / 255.0)
-        osc.send("/WASEssentia/genre/color/g", g / 255.0)
-        osc.send("/WASEssentia/genre/color/b", b / 255.0)
-
         # --- TOP GENRES (already computed) ---
         # top_genres = [('Latin---Reggaeton', 0.623), ('Hip Hop---Trap', 0.135), ...]
 
         top1_label, top1_prob = top5[0]
 
-        # --------------------------------------------------
-        # Mood computation
-        # --------------------------------------------------
         valence = mood_mapper.compute_valence(top5)
-        energy = mood_mapper.compute_energy(g_brightness)
+
+        energy = mood_mapper.compute_energy(
+            danceability=g_brightness,
+            rms_rt=rms_rt,
+            top_genre=top1_label.split("---")[0],
+            confidence=top1_prob
+        )
 
         mood_hue = mood_mapper.mood_to_hue(valence, energy)
 
@@ -381,6 +384,7 @@ def on_audio(audio, rms_rt):
         }
 
         if DEBUG_DATA:
+            print('_|_')
             print('Mood  color:', r,g,b)
 
         osc.send(
@@ -388,17 +392,62 @@ def on_audio(audio, rms_rt):
             json.dumps(osc_color_data)
         )
 
+        # Now, we have all datas to calculate the genre color
+        # --------------------------------------------------
+        # Genre color
+        # --------------------------------------------------
+        # saturation brightness  --> use default or data from Mood calculation
+        g_brightness = max(0.1, min(1.0, float(energy)))
+        # take the most relevant genre value
+        g_saturation = min(1.0, top1_prob * 1.5)
+
+        r, g, b = compute_color(genre_hue,g_saturation,g_brightness)
+
+        if  DEBUG_DATA:
+            print("Genre color:", r,g,b)
+
+        osc.send("/WASEssentia/genre/color/r", r / 255.0)
+        osc.send("/WASEssentia/genre/color/g", g / 255.0)
+        osc.send("/WASEssentia/genre/color/b", b / 255.0)
+
         # --------------------------------------------------
         # Final blended hue
         # --------------------------------------------------
-        final_hue = (0.7 * genre_hue + 0.3 * mood_hue) % 360
 
-        # saturation & brightness already computed
-        r, g, b = compute_color(
-            final_hue,
-            g_saturation,
-            g_brightness
+        # fuse hues
+        # final_hue = (0.7 * genre_hue + 0.3 * mood_hue) % 360
+        final_hue = mood_mapper.fuse_hues(
+            genre_hue=genre_hue,
+            mood_hue=mood_hue,
+            confidence=top1_prob
         )
+
+        # convert final hue to RGB
+
+        if COLOR1:
+            # saturation & brightness already computed
+            r, g, b = compute_color(
+                final_hue,
+                g_saturation,
+                g_brightness
+            )
+
+        elif COLOR2:
+            # complex algo
+            r, g, b = mood_mapper.final_color(
+                genre_hue=genre_hue,
+                mood_hue=mood_hue,
+                confidence=top1_prob,
+                energy=energy
+            )
+
+        else:
+            # simple algo
+            r, g, b = mood_mapper._hsv_to_rgb(
+                final_hue,
+                int(80 + 175 * top1_prob),
+                int(60 + 195 * energy)
+            )
 
         if DEBUG_DATA:
             print('Blended color:', r,g,b)
@@ -449,14 +498,14 @@ if __name__ == "__main__":
                     print(f"🎛 Aux model loaded: {m['name']}")
 
     # read audio --> non-blocking call
-    audio = AudioStream(
+    main_audio = AudioStream(
         on_audio,
         device_index=DEVICE_INDEX,
         channels=CHANNELS
     )
 
     audio_thread = threading.Thread(
-        target=audio.start,
+        target=main_audio.start,
         daemon=True
     )
     audio_thread.start()
@@ -469,7 +518,7 @@ if __name__ == "__main__":
                 time.sleep(0.16)  # 6 FPS
         except KeyboardInterrupt:
             print("Stopping…")
-            audio.stop()
+            main_audio.stop()
             visual.close()
 
     else:

@@ -1,0 +1,18 @@
+{
+  "Rock": 0.85,
+  "Metal": 0.95,
+  "Hip Hop": 0.75,
+  "Electronic": 0.85,
+  "Funk / Soul": 0.70,
+  "Pop": 0.65,
+  "Latin": 0.75,
+  "Reggae": 0.50,
+  "Jazz": 0.45,
+  "Classical": 0.30,
+  "Blues": 0.40,
+  "Folk, World, & Country": 0.35,
+  "Stage & Screen": 0.50,
+  "Children's": 0.60,
+  "Brass & Military": 0.70,
+  "Non-Music": 0.00
+}
