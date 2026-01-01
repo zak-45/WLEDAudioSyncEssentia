@@ -1,0 +1,46 @@
+{
+  "positive": {
+    "weight": 0.6,
+    "genres": [
+      "Pop",
+      "Reggae",
+      "Latin",
+      "Funk / Soul",
+      "Children's"
+    ]
+  },
+
+  "energetic": {
+    "weight": 0.4,
+    "genres": [
+      "Electronic",
+      "Hip Hop",
+      "Rock",
+      "Brass & Military"
+    ]
+  },
+
+  "calm": {
+    "weight": -0.2,
+    "genres": [
+      "Classical",
+      "Jazz",
+      "Folk, World, & Country",
+      "Stage & Screen"
+    ]
+  },
+
+  "melancholic": {
+    "weight": -0.4,
+    "genres": [
+      "Blues"
+    ]
+  },
+
+  "neutral": {
+    "weight": 0.0,
+    "genres": [
+      "Non-Music"
+    ]
+  }
+}

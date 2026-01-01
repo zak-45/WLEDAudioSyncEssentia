@@ -3,10 +3,9 @@ import json
 import numpy as np
 import argparse
 import time
+import threading
 
 from configmanager import *
-from config import *
-from configmanager import root_path
 
 from src.utils import resample, compute_color
 from src.audio_stream import AudioStream
@@ -21,6 +20,24 @@ from src.adaptive_buffer import AdaptiveBuffer
 from src.mood_color_mapper import MoodColorMapper
 
 from src.genre_hues import GENRE_HUES
+
+from src.visual_debug import VisualDebugOverlay
+
+from src.runtime_config import RuntimeConfig
+
+cfg = RuntimeConfig("config/audio_runtime.json")
+
+AUDIO_DEVICE_RATE = cfg.AUDIO_DEVICE_RATE
+MODEL_SAMPLE_RATE = cfg.MODEL_SAMPLE_RATE
+MIN_RMS = cfg.MIN_RMS
+
+BUFFER_SECONDS = cfg.BUFFER_SECONDS
+MIN_BUFFER_SECONDS = cfg.MIN_BUFFER_SECONDS
+MAX_BUFFER_SECONDS = cfg.MAX_BUFFER_SECONDS
+HOP_SECONDS = cfg.HOP_SECONDS
+
+SMOOTHING_ALPHA = cfg.SMOOTHING_ALPHA
+
 
 parser = argparse.ArgumentParser()
 
@@ -83,12 +100,28 @@ parser.add_argument(
     help="If present, show AUX values"
 )
 
+parser.add_argument(
+    "--visual",
+    action="store_true",
+    help="Enable visual debug overlay"
+)
+
+parser.add_argument(
+    "--debug",
+    action="store_true",
+    help="Print debug datas"
+)
+
+
 args = parser.parse_args()
+
+VISUAL_DEBUG = args.visual
+DEBUG_DATA = args.debug
+
+visual = VisualDebugOverlay() if VISUAL_DEBUG else None
 
 is_silent = False
 last_non_silent_time = time.time()
-
-SILENCE_TIMEOUT = 0.75  # seconds
 
 adaptive = AdaptiveBuffer(
     MIN_BUFFER_SECONDS,
@@ -115,6 +148,8 @@ CHANNELS = args.channels
 PRINT_RAW = args.show_raw
 AUX = args.aux
 
+SILENCE_TIMEOUT = cfg.SILENCE_TIMEOUT  # seconds
+
 buffer = np.zeros(0, dtype=np.float32)
 
 # Main Effnet discogs model with Music Genre Detection
@@ -130,16 +165,17 @@ osc = OSCSender(
     path=OSC_PATH
 )
 
-print(
-    f"🎛 OSC → {OSC_IP}:{OSC_PORT} {OSC_PATH}"
-)
+if DEBUG_DATA:
+    print(
+        f"🎛 OSC → {OSC_IP}:{OSC_PORT} {OSC_PATH}"
+    )
 
 # Genre Color
 g_brightness = 255 # default, calculate from danceability if available Energy → brightness (value)
 g_saturation = 255 # default, calculate from top genre min(1.0, top1_prob * 1.5)
 
-# mood color
-mood_mapper = MoodColorMapper("models/genre_discogs400-discogs-effnet-1.json")
+# mood color, read JSON for genre labels
+mood_mapper = MoodColorMapper("models/genre_discogs400-discogs-effnet-1.json", "config/mood_valence.json")
 
 def extract_macro(label):
     return label.split("---")[0]
@@ -202,9 +238,10 @@ def on_audio(audio, rms_rt):
 
     if not is_silent:
 
-        print('_' * 80)
+        if DEBUG_DATA:
+            print('_' * 80)
 
-        if PRINT_RAW:
+        if PRINT_RAW and DEBUG_DATA:
             print("RAW max:", probs.max())
 
             raw_top5 = top_n_from_probs(probs, clf.labels, 5)
@@ -226,13 +263,15 @@ def on_audio(audio, rms_rt):
             silent=False
         )
 
-        print("GENRE TOP5:",
-              " | ".join(f"{g}:{v:.5f}" for g, v in top5))
+        if DEBUG_DATA:
+            print("GENRE TOP5:",
+                  " | ".join(f"{g}:{v:.5f}" for g, v in top5))
 
         i=0
         for label, value in top5:
             osc.send(f"/WASEssentia/genre/top{i}", label)
             if i == 0:
+                # take the most relevant genre (0...4)
                 g_saturation = min(1.0, value * 1.5)
             i+=1
 
@@ -254,23 +293,29 @@ def on_audio(audio, rms_rt):
                 silent=False
             )
 
-            print("MACRO TOP5:",
-                  " | ".join(f"{g}:{v:.5f}" for g, v in top5_macro))
+            if DEBUG_DATA:
+                print("MACRO TOP5:",
+                      " | ".join(f"{g}:{v:.5f}" for g, v in top5_macro))
 
             i=0
             for label, value in top5:
                 osc.send(f"/WASEssentia/genre/macro_top{i}/", label)
                 i+=1
 
-        # AUX
+        # --------------------------------------------------
+        # AUX classifiers
+        # --------------------------------------------------
         if AUX:
-            print('_' * 80)
+            if DEBUG_DATA:
+                print('_' * 80)
+
             aux_results = {}
             embeddings = clf.compute_embeddings(segment)
             for aux in aux_classifiers:
                 results = aux.classify(embeddings)
                 if results is not None:
                     aux_results.update(results)
+                    # energy --> brightness
                     if aux.name == 'danceability classifier':
                         g_brightness = max(0.1, min(1.0, float(aux_results.get('danceable'))))
                     # sort by value
@@ -279,8 +324,10 @@ def on_audio(audio, rms_rt):
                         key=lambda x: x[1],
                         reverse=True
                     )
-                    print('_|_')
-                    print(f"AUX {aux.name} =", " | ".join(f"{k}:{v:.5f}" for k, v in aux_results_sorted))
+
+                    if DEBUG_DATA:
+                        print('_|_')
+                        print(f"AUX {aux.name} =", " | ".join(f"{k}:{v:.5f}" for k, v in aux_results_sorted))
 
                     for label, value in aux_results.items():
                         path = f"/WASEssentia/aux/{aux.name.replace(' ', '_')}/{label.replace(' ', '_')}"
@@ -288,13 +335,20 @@ def on_audio(audio, rms_rt):
 
                     aux_results.clear()
 
-            # Genre color
-            r, g, b = compute_color(genre_hue,g_saturation,g_brightness)
+        # Now, we have all datas to calculate the final color
+        # --------------------------------------------------
+        # Genre color
+        # --------------------------------------------------
+        # saturation brightness  --> use default or data from AUX classifiers
+        r, g, b = compute_color(genre_hue,g_saturation,g_brightness)
+
+        if  DEBUG_DATA:
             print('_|_')
             print("Genre color:", r,g,b)
-            osc.send("/WASEssentia/genre/color/r", r / 255.0)
-            osc.send("/WASEssentia/genre/color/g", g / 255.0)
-            osc.send("/WASEssentia/genre/color/b", b / 255.0)
+
+        osc.send("/WASEssentia/genre/color/r", r / 255.0)
+        osc.send("/WASEssentia/genre/color/g", g / 255.0)
+        osc.send("/WASEssentia/genre/color/b", b / 255.0)
 
         # --- TOP GENRES (already computed) ---
         # top_genres = [('Latin---Reggaeton', 0.623), ('Hip Hop---Trap', 0.135), ...]
@@ -326,7 +380,8 @@ def on_audio(audio, rms_rt):
             "B": b
         }
 
-        print('Mood  color:', r,g,b)
+        if DEBUG_DATA:
+            print('Mood  color:', r,g,b)
 
         osc.send(
             "/WASEssentia/mood/color",
@@ -345,11 +400,27 @@ def on_audio(audio, rms_rt):
             g_brightness
         )
 
-        print('Blended color:', r,g,b)
+        if DEBUG_DATA:
+            print('Blended color:', r,g,b)
 
         osc.send("/WASEssentia/final/color/r", r / 255.0)
         osc.send("/WASEssentia/final/color/g", g / 255.0)
         osc.send("/WASEssentia/final/color/b", b / 255.0)
+
+        # --------------------------------------------------
+        # End color
+        # --------------------------------------------------
+
+        if VISUAL_DEBUG:
+            visual.update(
+                genre=macro,
+                genre_hue=genre_hue,
+                mood_hue=mood_hue,
+                final_hue=final_hue,
+                valence=valence,
+                energy=energy,
+                rgb=(r, g, b)
+            )
 
     buffer = buffer[-HOP:]  # advance hop
 
@@ -364,21 +435,50 @@ if __name__ == "__main__":
     for m in models:
         if m["type"] == "genre":
 
-            print(f"🎵 Genre model loaded: {m['name']}")
+            if DEBUG_DATA:
+                print(f"🎵 Genre model loaded: {m['name']}")
 
         else:
 
-            aux_classifiers.append(
-                AuxClassifier(m["name"], m["pb"], m["json"], m["output_name"], agg=MACRO_AGG)
-            )
+            if AUX:
+                aux_classifiers.append(
+                    AuxClassifier(m["name"], m["pb"], m["json"], m["output_name"], agg=MACRO_AGG)
+                )
 
-            print(f"🎛 Aux model loaded: {m['name']}")
+                if DEBUG_DATA:
+                    print(f"🎛 Aux model loaded: {m['name']}")
 
-    # Read audio, blocking call
-    AudioStream(
+    # read audio --> non-blocking call
+    audio = AudioStream(
         on_audio,
         device_index=DEVICE_INDEX,
         channels=CHANNELS
-    ).start()
+    )
+
+    audio_thread = threading.Thread(
+        target=audio.start,
+        daemon=True
+    )
+    audio_thread.start()
+
+    # display visual debug overlay if enabled
+    if VISUAL_DEBUG:
+        try:
+            while True:
+                visual.render()
+                time.sleep(0.16)  # 6 FPS
+        except KeyboardInterrupt:
+            print("Stopping…")
+            audio.stop()
+            visual.close()
+
+    else:
+
+        try:
+            # blocking call
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("Stopping…")
 
     print('End WLEDAudioSyncEssentia')

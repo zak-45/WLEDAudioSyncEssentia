@@ -10,52 +10,44 @@ class MoodColorMapper:
     - Energy (danceability / RMS / confidence)
     """
 
-    def __init__(self, genre_json_path):
-        self.valence_weights = self._build_valence_weights(genre_json_path)
+    def __init__(self, genre_json_path, mood_config_path):
+        self.valence_weights = self._build_valence_weights(genre_json_path, mood_config_path)
 
     # ------------------------------------------------------------
     # Valence weights auto-derived from JSON
     # ------------------------------------------------------------
     @staticmethod
-    def _build_valence_weights(json_path):
+    def _build_valence_weights(model_json_path, mood_config_path):
         """
-        Builds valence weights automatically from model JSON.
-        Strategy:
-        - Uses label names (macro genres)
-        - Applies heuristic sentiment mapping
+        Builds valence weights automatically from:
+        - model JSON (labels)
+        - mood config JSON (sentiment groups)
         """
 
-        with open(json_path, "r", encoding="utf-8") as f:
+        # Load model labels
+        with open(model_json_path, "r", encoding="utf-8") as f:
             meta = json.load(f)
 
         labels = meta.get("classes") or meta.get("labels")
+
+        # Load mood config
+        with open(mood_config_path, "r", encoding="utf-8") as f:
+            mood_cfg = json.load(f)
+
         weights = defaultdict(float)
 
-        POSITIVE = {
-            "Pop", "Dance", "Disco", "Latin", "Reggae",
-            "Funk", "Soul", "House", "Electro"
-        }
+        # Build lookup table: macro → weight
+        macro_weight = {}
 
-        NEGATIVE = {
-            "Metal", "Noise", "Industrial", "Dark",
-            "Experimental", "Drone"
-        }
+        for group_name, group in mood_cfg.items():
+            w = float(group.get("weight", 0.0))
+            for genre in group.get("genres", []):
+                macro_weight[genre] = w
 
-        CALM = {
-            "Ambient", "Classical", "Jazz", "Soundtrack"
-        }
-
+        # Assign weights per macro genre found in labels
         for label in labels:
             macro = label.split("---")[0]
-
-            if macro in POSITIVE:
-                weights[macro] = 0.6
-            elif macro in NEGATIVE:
-                weights[macro] = -0.6
-            elif macro in CALM:
-                weights[macro] = -0.2
-            else:
-                weights[macro] = 0.0
+            weights[macro] = macro_weight.get(macro, 0.0)
 
         return dict(weights)
 

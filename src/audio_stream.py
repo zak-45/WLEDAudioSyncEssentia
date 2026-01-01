@@ -1,6 +1,5 @@
 import pyaudio
 import numpy as np
-import time
 
 class AudioStream:
     def __init__(self, callback, device_index=None, channels=2):
@@ -35,11 +34,8 @@ class AudioStream:
         print("🎧 Listening (PyAudio)... Ctrl+C to stop")
         self.stream.start_stream()
 
-        try:
-            while True:
-                time.sleep(0.1)
-        except KeyboardInterrupt:
-            print("\nStopping audio stream...")
-            self.stream.stop_stream()
-            self.stream.close()
-            self.pa.terminate()
+    def stop(self):
+        print("\nStopping audio stream...")
+        self.stream.stop_stream()
+        self.stream.close()
+        self.pa.terminate()

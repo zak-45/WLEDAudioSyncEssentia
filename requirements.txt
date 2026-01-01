@@ -5,3 +5,4 @@ essentia-tensorflow ; sys_platform != "win32"
 six
 imageio
 soxr
+opencv-python

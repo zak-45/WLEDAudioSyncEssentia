@@ -1,0 +1,27 @@
+{
+  "audio": {
+    "device_rate": 44100,
+    "model_rate": 16000,
+    "channels_default": 2,
+    "min_rms": 0.002,
+    "device_index": 0,
+    "silence_timeout": 0.75
+  },
+
+  "buffer": {
+    "initial_seconds": 2.5,
+    "min_seconds": 2.5,
+    "max_seconds": 8.0,
+    "hop_seconds": 0.5,
+
+    "growth_rate": 0.5,
+    "shrink_rate": 2.0,
+
+    "confidence_threshold": 0.25,
+    "stability_frames": 3
+  },
+
+  "smoothing": {
+    "alpha": 0.4
+  }
+}
