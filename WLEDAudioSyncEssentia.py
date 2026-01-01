@@ -12,17 +12,12 @@ from src.audio_stream import AudioStream
 from src.smoothing import GenreSmoother
 from src.osc_sender import OSCSender
 from src.macro_genres import collapse_to_macro
-
 from src.model_loader import discover_models
 from src.effnet_classifier import EffnetClassifier, AuxClassifier
-
 from src.adaptive_buffer import AdaptiveBuffer
 from src.mood_color_mapper import MoodColorMapper
-
 from src.genre_hues import GENRE_HUES
-
 from src.visual_debug import VisualDebugOverlay
-
 from src.runtime_config import RuntimeConfig
 
 cfg = RuntimeConfig("config/audio_runtime.json")
@@ -38,8 +33,12 @@ HOP_SECONDS = cfg.HOP_SECONDS
 
 SMOOTHING_ALPHA = cfg.SMOOTHING_ALPHA
 
-
 parser = argparse.ArgumentParser()
+
+CONFIDENCE_THRESHOLD = cfg.CONFIDENCE_THRESHOLD
+STABILITY_FRAMES = cfg.STABILITY_FRAMES
+BUFFER_GROWTH_RATE = cfg.BUFFER_GROWTH_RATE
+BUFFER_SHRINK_RATE = cfg.BUFFER_SHRINK_RATE
 
 parser.add_argument(
     "--macro",
@@ -140,7 +139,11 @@ last_non_silent_time = time.time()
 adaptive = AdaptiveBuffer(
     MIN_BUFFER_SECONDS,
     MAX_BUFFER_SECONDS,
-    BUFFER_SECONDS
+    BUFFER_SECONDS,
+    CONFIDENCE_THRESHOLD,
+    STABILITY_FRAMES,
+    BUFFER_GROWTH_RATE,
+    BUFFER_SHRINK_RATE
 )
 
 NEEDED = int(MODEL_SAMPLE_RATE * adaptive.current)
