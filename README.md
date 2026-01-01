@@ -1,29 +1,32 @@
 # WLEDAudioSyncEssentia
 
-Real-time audio analysis and genre classification using the [Essentia](https://essentia.upf.edu/) library. This tool captures audio, detects musical genres and moods, and sends the data via **OSC (Open Sound Control)**, allowing for synchronization with lighting systems like [WLED](https://kno.wled.ge/) (via an OSC bridge), visualizers like TouchDesigner, or other creative coding platforms.
+Real-time audio analysis and genre classification using the Essentia library. This tool captures audio, detects musical genres, moods, and other characteristics, and broadcasts the data via **OSC (Open Sound Control)**.
+
+This allows for synchronization with lighting systems (like WLED via an OSC bridge), visualizers (TouchDesigner, Resolume), or other creative coding platforms.
 
 ## Overview
 
-This project captures real-time audio input, analyzes it using Essentia's machine learning models (EffNet) to determine the musical genre, and broadcasts the results over the network.
+This project captures real-time audio input, analyzes it using Essentia's machine learning models (EffNet) to determine the musical genre, and broadcasts the results over the network. It includes smoothing logic to prevent jitter and supports auxiliary models for mood and instrumentation detection.
 
 ## Features
 
 *   **Real-time Audio Capture**: Listens to system audio or microphone input via PyAudio.
-*   **Deep Learning Analysis**: Uses Essentia's TensorFlow models for high-accuracy genre detection.
+*   **Deep Learning Analysis**: Uses Essentia's TensorFlow models for high-accuracy genre detection (Discogs 400).
 *   **Macro Genre Support**: Option to collapse specific subgenres (e.g., "Deep House") into broad categories (e.g., "Electronic").
 *   **Auxiliary Classifiers**: Optional analysis for:
     *   Danceability
     *   Mood (Happy, Sad, Relaxed)
     *   Instrumentation
     *   Musical Themes
-*   **OSC Output**: Broadcasts classification results over UDP to any OSC-compatible receiver.
+*   **OSC Output**: Broadcasts classification results, color mappings, and mood data over UDP.
+*   **Visual Debug Overlay**: Optional graphical window showing detected genre, mood colors, and energy.
 *   **Adaptive Smoothing**: Implements buffer logic to prevent rapid flickering between predictions.
 
 ## Prerequisites
 
 *   **Python 3.8+**
 *   **Essentia**: The audio analysis library with TensorFlow support.
-*   **OSC Receiver**: A target application (e.g., TouchDesigner, Resolume, or a custom WLED bridge) to receive the `/genre` messages.
+*   **OSC Receiver**: A target application to receive the OSC messages.
 
 ## Installation
 
@@ -42,10 +45,10 @@ This project captures real-time audio input, analyzes it using Essentia's machin
     ```
 
 3.  **Download Models:**
-    Create a `models/` directory in the project root. Download the following models (and their `.json` metadata) from the Essentia Models repository:
+    Create a `models/` directory in the project root. Download the following models (and their `.json` metadata) from the Essentia Models repository and place them there.
 
-    **Required:**
-    *   `discogs-effnet-bs64-1.pb`
+    **Required (Genre):**
+    *   `discogs-effnet-bs64-1.pb` (Embedding model)
     *   `genre_discogs400-discogs-effnet-1.pb`
     *   `genre_discogs400-discogs-effnet-1.json`
 
@@ -68,26 +71,50 @@ python WLEDAudioSyncEssentia.py
 ```
 By default, this sends OSC messages to `127.0.0.1:12000` at path `/genre`.
 
-### Advanced Usage
+### Command Line Arguments
 
-**Enable Macro Genres (e.g., "Rock" instead of "Punk Rock"):**
+| Argument | Description |
+| :--- | :--- |
+| `--macro` | Collapse specific subgenres into macro genres (e.g., Rock, Electronic). |
+| `--macro-agg` | Aggregation method for macro genres (`mean` or `max`). |
+| `--aux` | Enable auxiliary classifiers (Mood, Danceability, etc.). |
+| `--visual` | Enable the visual debug overlay window. |
+| `--debug` | Print detailed debug information to the console. |
+| `--show_raw` | Print raw probability values (requires `--debug`). |
+| `--osc-ip <ip>` | Set OSC destination IP (default: 127.0.0.1). |
+| `--osc-port <port>` | Set OSC destination port (default: 12000). |
+| `--osc-path <path>` | Set OSC base path (default: /genre). |
+| `--device-index <id>` | Select specific PyAudio input device index. |
+| `--channels <n>` | Set number of input channels (default: 2). |
+
+### Examples
+
+**Enable Macro Genres and Visual Debug:**
 ```bash
-python WLEDAudioSyncEssentia.py --macro
+python WLEDAudioSyncEssentia.py --macro --visual
 ```
 
-**Enable Auxiliary Classifiers (Mood, Danceability, etc.):**
+**Enable All Classifiers and Send to External IP:**
 ```bash
-python WLEDAudioSyncEssentia.py --aux
+python WLEDAudioSyncEssentia.py --aux --osc-ip 192.168.1.50
 ```
 
-**Custom OSC Target:**
-```bash
-python WLEDAudioSyncEssentia.py --osc-ip 192.168.1.50 --osc-port 8000
-```
+## OSC API
+
+The application sends the following OSC messages:
+
+| Path | Type | Description |
+| :--- | :--- | :--- |
+| `/WASEssentia/genre/top{0-4}` | String | Top 5 detected genres (e.g., "Rock---Punk"). |
+| `/WASEssentia/genre/macro_top{0-4}/` | String | Top 5 macro genres (if `--macro` is enabled). |
+| `/WASEssentia/aux/{model}/{label}` | Float | Probability (0.0-1.0) for aux labels (e.g., `/WASEssentia/aux/mood_happy/happy`). |
+| `/WASEssentia/genre/color/{r,g,b}` | Float | RGB color derived from the genre hue. |
+| `/WASEssentia/mood/color` | JSON | JSON string containing valence, energy, and mood RGB. |
+| `/WASEssentia/final/color/{r,g,b}` | Float | Final blended color (Genre + Mood). |
 
 ## Configuration
 
-You can fine-tune audio buffering and smoothing in `config.py`:
+You can fine-tune audio buffering and smoothing in `config.py` (or `config/audio_runtime.json` if available).
 
 ```python
 MODEL_SAMPLE_RATE = 16000
@@ -95,15 +122,6 @@ BUFFER_SECONDS = 2.5      # Minimum buffer for analysis
 HOP_SECONDS = 0.5         # Analysis interval
 SMOOTHING_ALPHA = 0.4     # Smoothing factor for predictions
 ```
-
-## Usage
-
-1.  Ensure your WLED device is powered on and connected to the network.
-2.  Run the application:
-    ```bash
-    python WLEDAudioSyncEssentia.py
-    ```
-3.  Play music on your system. The script will analyze the audio stream and switch the WLED presets based on the dominant genre detected.
 
 ## License
 
