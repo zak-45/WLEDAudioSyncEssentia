@@ -20,6 +20,8 @@ from src.effnet_classifier import EffnetClassifier, AuxClassifier
 from src.adaptive_buffer import AdaptiveBuffer
 from src.mood_color_mapper import MoodColorMapper
 
+from src.genre_hues import GENRE_HUES
+
 parser = argparse.ArgumentParser()
 
 parser.add_argument(
@@ -139,6 +141,8 @@ g_saturation = 255 # default, calculate from top genre min(1.0, top1_prob * 1.5)
 # mood color
 mood_mapper = MoodColorMapper("models/genre_discogs400-discogs-effnet-1.json")
 
+def extract_macro(label):
+    return label.split("---")[0]
 
 def top_n_from_probs(probs, labels, n=5):
     idx = probs.argsort()[::-1][:n]
@@ -212,7 +216,9 @@ def on_audio(audio, rms_rt):
         top5 = smooth.top_n(5)
 
         top_label, top_conf = top5[0]
-        genre_hue = top_label
+
+        macro = extract_macro(top_label)
+        genre_hue = GENRE_HUES.get(macro, 270)  # fallback purple
 
         adaptive.update(
             top_label=top_label,
@@ -301,6 +307,8 @@ def on_audio(audio, rms_rt):
         valence = mood_mapper.compute_valence(top5)
         energy = mood_mapper.compute_energy(g_brightness)
 
+        mood_hue = mood_mapper.mood_to_hue(valence, energy)
+
         r, g, b = mood_mapper.mood_to_rgb(
             valence=valence,
             energy=energy,
@@ -324,6 +332,24 @@ def on_audio(audio, rms_rt):
             "/WASEssentia/mood/color",
             json.dumps(osc_color_data)
         )
+
+        # --------------------------------------------------
+        # Final blended hue
+        # --------------------------------------------------
+        final_hue = (0.7 * genre_hue + 0.3 * mood_hue) % 360
+
+        # saturation & brightness already computed
+        r, g, b = compute_color(
+            final_hue,
+            g_saturation,
+            g_brightness
+        )
+
+        print('Blended color:', r,g,b)
+
+        osc.send("/WASEssentia/final/color/r", r / 255.0)
+        osc.send("/WASEssentia/final/color/g", g / 255.0)
+        osc.send("/WASEssentia/final/color/b", b / 255.0)
 
     buffer = buffer[-HOP:]  # advance hop
 

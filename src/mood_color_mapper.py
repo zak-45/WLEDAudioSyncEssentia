@@ -1,7 +1,7 @@
 import json
 import colorsys
 from collections import defaultdict
-
+import numpy as np
 
 class MoodColorMapper:
     """
@@ -16,7 +16,8 @@ class MoodColorMapper:
     # ------------------------------------------------------------
     # Valence weights auto-derived from JSON
     # ------------------------------------------------------------
-    def _build_valence_weights(self, json_path):
+    @staticmethod
+    def _build_valence_weights(json_path):
         """
         Builds valence weights automatically from model JSON.
         Strategy:
@@ -115,3 +116,16 @@ class MoodColorMapper:
         )
 
         return int(r * 255), int(g * 255), int(b * 255)
+
+    @staticmethod
+    def mood_to_hue(valence, energy):
+        """
+        Map valence (-1..1) and energy (0..1) to a hue angle.
+        """
+        # Valence controls warm ↔ cool
+        # Energy controls brightness but slightly shifts hue
+        base_hue = np.interp(valence, [-1, 1], [220, 20])  # sad→happy
+
+        energy_shift = np.interp(energy, [0, 1], [-20, 20])
+
+        return (base_hue + energy_shift) % 360
