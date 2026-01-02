@@ -7,20 +7,26 @@ import threading
 
 from configmanager import *
 
-from src.utils import resample, compute_color
+from src.analysis_worker import AnalysisWorker
+from src.utils import resample
 from src.audio_stream import AudioStream
 from src.smoothing import GenreSmoother
 from src.osc_sender import OSCSender
-from src.macro_genres import collapse_to_macro
 from src.model_loader import discover_models
 from src.effnet_classifier import EffnetClassifier, AuxClassifier
 from src.adaptive_buffer import AdaptiveBuffer
 from src.mood_color_mapper import MoodColorMapper
-from src.genre_hues import GENRE_HUES
 from src.visual_debug import VisualDebugOverlay
+
+from src.aubio_beat_detector import AubioBeatDetector
+
 from src.runtime_config import RuntimeConfig
 
 cfg = RuntimeConfig("config/audio_runtime.json")
+
+import queue
+audio_queue = queue.Queue(maxsize=8)
+
 
 AUDIO_DEVICE_RATE = cfg.AUDIO_DEVICE_RATE
 MODEL_SAMPLE_RATE = cfg.MODEL_SAMPLE_RATE
@@ -39,6 +45,7 @@ CONFIDENCE_THRESHOLD = cfg.CONFIDENCE_THRESHOLD
 STABILITY_FRAMES = cfg.STABILITY_FRAMES
 BUFFER_GROWTH_RATE = cfg.BUFFER_GROWTH_RATE
 BUFFER_SHRINK_RATE = cfg.BUFFER_SHRINK_RATE
+
 
 parser.add_argument(
     "--macro",
@@ -188,297 +195,33 @@ if DEBUG_DATA:
     )
 
 # Brightness & Saturation for Color
-g_brightness = 0.5 # default, calculate from  Energy
-g_saturation = 0.5 # default, calculate from top genre min(1.0, top1_prob * 1.5)
+danceability = 0.5 # default, if no AUX classifier
 
 # mood color, read JSON for genre labels
 mood_mapper = MoodColorMapper("models/genre_discogs400-discogs-effnet-1.json",
                               "config/mood_valence.json")
 
-def extract_macro(label):
-    return label.split("---")[0]
-
-def top_n_from_probs(probs, labels, n=5):
-    idx = probs.argsort()[::-1][:n]
-    return [(labels[i], float(probs[i])) for i in idx]
-
-def enter_silence():
-    global buffer, is_silent
-    is_silent = True
-
-    buffer = np.zeros(0, dtype=np.float32)
-    smooth.reset()
-    adaptive.reset()
-    adaptive.current = MIN_BUFFER_SECONDS
-
-    osc.send_silence(0)
-    print("🔇 SILENCE → state reset")
-
-def exit_silence():
-    global is_silent
-    is_silent = False
-
-    osc.send_silence(1)
-    print("🎵 AUDIO RESUMED")
 
 def on_audio(audio, rms_rt):
-    global buffer, last_non_silent_time, g_saturation, g_brightness
-
-    # stereo → mono
     if audio.size % 2 == 0:
         audio = audio.reshape(-1, 2).mean(axis=1)
 
-    # resample
+    beat = aubio_beat_detector.process(audio)
+    if beat:
+        print('beat detected')
+
     audio = resample(audio, AUDIO_DEVICE_RATE, MODEL_SAMPLE_RATE)
 
-    buffer = np.concatenate([buffer, audio])
-
-    if len(buffer) < NEEDED:
-        return
-
-    segment = buffer[-NEEDED:]
-
-    # silent
-    now = time.time()
-
-    if rms_rt < MIN_RMS:
-        if not is_silent and (now - last_non_silent_time) >= SILENCE_TIMEOUT:
-            enter_silence()
-        return
-    else:
-        last_non_silent_time = now
-        if is_silent:
-            exit_silence()
-
-    probs = clf.classify(segment)
-    if probs is None:
-        return
-
-    if not is_silent:
-
-        if DEBUG_DATA:
-            print('_' * 80)
-
-        if PRINT_RAW and DEBUG_DATA:
-            print("RAW max:", probs.max())
-
-            raw_top5 = top_n_from_probs(probs, clf.labels, 5)
-
-            print("RAW TOP5:",
-                  " | ".join(f"{g}:{v:.4f}" for g, v in raw_top5))
-
-        smooth.update(probs)
-        top5 = smooth.top_n(5)
-
-        top_label, top_conf = top5[0]
-
-        macro = extract_macro(top_label)
-        genre_hue = GENRE_HUES.get(macro, 270)  # fallback purple
-
-        adaptive.update(
-            top_label=top_label,
-            confidence=top_conf,
-            silent=False
-        )
-
-        if DEBUG_DATA:
-            print("GENRE TOP5:",
-                  " | ".join(f"{g}:{v:.5f}" for g, v in top5))
-
-        i=0
-        for label, value in top5:
-            osc.send(f"/WASEssentia/genre/top{i}", label)
-            i+=1
-
-        if USE_MACRO_GENRES:
-            macro_probs = collapse_to_macro(probs, clf.labels, agg=MACRO_AGG)
-
-            # top-5 macro genres
-            top5_macro = sorted(
-                macro_probs.items(),
-                key=lambda x: x[1],
-                reverse=True
-            )[:5]
-
-            top_label_macro, top_conf_macro = top5_macro[0]
-
-            adaptive.update(
-                top_label=top_label_macro,
-                confidence=top_conf_macro,
-                silent=False
-            )
-
-            if DEBUG_DATA:
-                print("MACRO TOP5:",
-                      " | ".join(f"{g}:{v:.5f}" for g, v in top5_macro))
-
-            i=0
-            for label, value in top5:
-                osc.send(f"/WASEssentia/genre/macro_top{i}/", label)
-                i+=1
-
-        # --------------------------------------------------
-        # AUX classifiers
-        # --------------------------------------------------
-        if AUX:
-            if DEBUG_DATA:
-                print('_' * 80)
-
-            aux_results = {}
-            embeddings = clf.compute_embeddings(segment)
-            for aux in aux_classifiers:
-                results = aux.classify(embeddings)
-                if results is not None:
-                    aux_results.update(results)
-                    # energy --> brightness
-                    if aux.name == 'danceability classifier':
-                        g_brightness = max(0.1, min(1.0, float(aux_results.get('danceable'))))
-                    # sort by value
-                    aux_results_sorted = sorted(
-                        aux_results.items(),
-                        key=lambda x: x[1],
-                        reverse=True
-                    )
-
-                    if DEBUG_DATA:
-                        print('_|_')
-                        print(f"AUX {aux.name} =", " | ".join(f"{k}:{v:.5f}" for k, v in aux_results_sorted))
-
-                    for label, value in aux_results.items():
-                        path = f"/WASEssentia/aux/{aux.name.replace(' ', '_')}/{label.replace(' ', '_')}"
-                        osc.send(path, float(value))
-
-                    aux_results.clear()
-
-        # --------------------------------------------------
-        # Mood computation
-        # --------------------------------------------------
-        # --- TOP GENRES (already computed) ---
-        # top_genres = [('Latin---Reggaeton', 0.623), ('Hip Hop---Trap', 0.135), ...]
-
-        top1_label, top1_prob = top5[0]
-
-        valence = mood_mapper.compute_valence(top5)
-
-        energy = mood_mapper.compute_energy(
-            danceability=g_brightness,
-            rms_rt=rms_rt,
-            top_genre=top1_label.split("---")[0],
-            confidence=top1_prob
-        )
-
-        mood_hue = mood_mapper.mood_to_hue(valence, energy)
-
-        r, g, b = mood_mapper.mood_to_rgb(
-            valence=valence,
-            energy=energy,
-            confidence=top1_prob
-        )
-
-        # --------------------------------------------------
-        # OSC JSON (Chataigne friendly)
-        # --------------------------------------------------
-        osc_color_data = {
-            "valence": round(valence, 3),
-            "energy": round(energy, 3),
-            "R": r,
-            "G": g,
-            "B": b
-        }
-
-        if DEBUG_DATA:
-            print('_|_')
-            print('Mood  color:', r,g,b)
-
-        osc.send(
-            "/WASEssentia/mood/color",
-            json.dumps(osc_color_data)
-        )
-
-        # Now, we have all datas to calculate the genre color
-        # --------------------------------------------------
-        # Genre color
-        # --------------------------------------------------
-        # saturation brightness  --> use default or data from Mood calculation
-        g_brightness = max(0.1, min(1.0, float(energy)))
-        # take the most relevant genre value
-        g_saturation = min(1.0, top1_prob * 1.5)
-
-        r, g, b = compute_color(genre_hue,g_saturation,g_brightness)
-
-        if  DEBUG_DATA:
-            print("Genre color:", r,g,b)
-
-        osc.send("/WASEssentia/genre/color/r", r / 255.0)
-        osc.send("/WASEssentia/genre/color/g", g / 255.0)
-        osc.send("/WASEssentia/genre/color/b", b / 255.0)
-
-        # --------------------------------------------------
-        # Final blended hue
-        # --------------------------------------------------
-
-        # fuse hues
-        # final_hue = (0.7 * genre_hue + 0.3 * mood_hue) % 360
-        final_hue = mood_mapper.fuse_hues(
-            genre_hue=genre_hue,
-            mood_hue=mood_hue,
-            confidence=top1_prob
-        )
-
-        # convert final hue to RGB
-
-        if COLOR1:
-            # saturation & brightness already computed
-            r, g, b = compute_color(
-                final_hue,
-                g_saturation,
-                g_brightness
-            )
-
-        elif COLOR2:
-            # complex algo
-            r, g, b = mood_mapper.final_color(
-                genre_hue=genre_hue,
-                mood_hue=mood_hue,
-                confidence=top1_prob,
-                energy=energy
-            )
-
-        else:
-            # simple algo
-            r, g, b = mood_mapper._hsv_to_rgb(
-                final_hue,
-                int(80 + 175 * top1_prob),
-                int(60 + 195 * energy)
-            )
-
-        if DEBUG_DATA:
-            print('Blended color:', r,g,b)
-
-        osc.send("/WASEssentia/final/color/r", r / 255.0)
-        osc.send("/WASEssentia/final/color/g", g / 255.0)
-        osc.send("/WASEssentia/final/color/b", b / 255.0)
-
-        # --------------------------------------------------
-        # End color
-        # --------------------------------------------------
-
-        if VISUAL_DEBUG:
-            visual.update(
-                genre=macro,
-                genre_hue=genre_hue,
-                mood_hue=mood_hue,
-                final_hue=final_hue,
-                valence=valence,
-                energy=energy,
-                rgb=(r, g, b)
-            )
-
-    buffer = buffer[-HOP:]  # advance hop
-
+    try:
+        audio_queue.put_nowait((audio, rms_rt, time.time()))
+    except queue.Full:
+        try:
+            audio_queue.get_nowait()  # drop old
+            audio_queue.put_nowait((audio, rms_rt, time.time()))
+        except queue.Empty:
+            pass
 
 if __name__ == "__main__":
-
     # fetch all models from folder
     models = discover_models(MODELS_DIR)
     #
@@ -513,12 +256,40 @@ if __name__ == "__main__":
     )
     audio_thread.start()
 
+    # beat detector, samplerate need to be checked
+    aubio_beat_detector = AubioBeatDetector(
+        samplerate=cfg.AUDIO_DEVICE_RATE,  # IMPORTANT
+        hop_size=512,
+        win_size=1024,
+    )
+
+    analysis = AnalysisWorker(
+        audio_queue=audio_queue,
+        cfg=cfg,
+        clf=clf,
+        smooth=smooth,
+        adaptive=adaptive,
+        osc=osc,
+        mood_mapper=mood_mapper,
+        aux_classifiers=aux_classifiers,
+        visual=visual if VISUAL_DEBUG else None,
+        use_macro=USE_MACRO_GENRES,
+        macro_agg=MACRO_AGG,
+        color1=COLOR1,
+        debug=DEBUG_DATA
+    )
+
+    threading.Thread(
+        target=analysis.run,
+        daemon=True
+    ).start()
+
     # display visual debug overlay if enabled
     if VISUAL_DEBUG:
         try:
             while True:
                 visual.render()
-                time.sleep(0.16)  # 6 FPS
+                time.sleep(0.16)  # 60 FPS
         except KeyboardInterrupt:
             print("Stopping…")
             main_audio.stop()

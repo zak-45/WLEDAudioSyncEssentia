@@ -6,3 +6,4 @@ six
 imageio
 soxr
 opencv-python
+aubio-ledfx

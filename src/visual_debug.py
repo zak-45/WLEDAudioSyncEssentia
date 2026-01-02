@@ -22,7 +22,8 @@ class VisualDebugOverlay:
         final_hue,
         valence,
         energy,
-        rgb
+        rgb,
+        rgb_accent
     ):
         """Called from audio thread"""
         img = np.zeros((self.height, self.width, 3), dtype=np.uint8)
@@ -75,8 +76,17 @@ class VisualDebugOverlay:
         cv2.rectangle(
             img,
             (10, bar_top),
-            (self.width - 10, self.height - 10),
+            (self.width - 118, self.height - 10),
             (int(rgb[2]), int(rgb[1]), int(rgb[0])),
+            -1
+        )
+
+        # Accent color preview
+        cv2.rectangle(
+            img,
+            (self.width - 110, bar_top ),
+            (self.width - 10, self.height - 10),
+            (int(rgb_accent[2]), int(rgb_accent[1]), int(rgb_accent[0])),
             -1
         )
 

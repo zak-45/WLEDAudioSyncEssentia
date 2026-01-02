@@ -11,6 +11,8 @@ class AudioStream:
         self.rate = 44100
         self.frames_per_buffer = 2048
 
+        self.stream=None
+
     def audio_callback(self, in_data, frame_count, time_info, status):
         audio = np.frombuffer(in_data, dtype=np.float32)
 

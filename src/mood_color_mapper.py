@@ -76,7 +76,7 @@ class MoodColorMapper:
         return max(-1.0, min(1.0, valence))
 
     # ------------------------------------------------------------
-    # Energy → [-1, 1]
+    # Energy → [0, 1]
     # ------------------------------------------------------------
     def compute_energy(
             self,
@@ -113,17 +113,6 @@ class MoodColorMapper:
         except Exception:
             return {}
 
-    # ------------------------------------------------------------
-    # Energy → [-1, 1]
-    # ------------------------------------------------------------
-    """
-    @staticmethod
-    def compute_energy(danceability):
-
-        #danceability ∈ [0,1]
-   
-        return 2.0 * danceability - 1.0
-    """
 
     # ------------------------------------------------------------
     # Valence + Energy → RGB
@@ -131,6 +120,8 @@ class MoodColorMapper:
     @staticmethod
     def mood_to_rgb(valence, energy, confidence):
         """
+        no more use
+        keep for debug
         confidence: top-1 genre probability
         """
 
@@ -263,5 +254,67 @@ class MoodColorMapper:
         r = int((rp + m) * 255)
         g = int((gp + m) * 255)
         b = int((bp + m) * 255)
+
+        return r, g, b
+
+    def accent_color(
+        self,
+        final_hue,
+        energy,
+        confidence
+    ):
+        """
+        Compute accent / secondary color.
+        Returns RGB tuple.
+        """
+
+        # --- choose accent mode ---
+        if energy < 0.35:
+            # calm → analogous
+            accent_hue = (final_hue + 30) % 360
+
+        elif energy < 0.65:
+            # groove → split complementary
+            accent_hue = (final_hue + 150) % 360
+
+        else:
+            # high energy → complementary
+            accent_hue = (final_hue + 180) % 360
+
+        # --- saturation ---
+        # accents should pop but not overpower
+        saturation = 0.45 + 0.35 * confidence
+        saturation = np.clip(saturation, 0.45, 0.85)
+
+        # --- brightness ---
+        # slightly dimmer than main color
+        value = 0.25 + 0.55 * energy
+        value = np.clip(value, 0.25, 0.8)
+
+        return self._hsv_to_rgb(
+            accent_hue,
+            int(saturation * 255),
+            int(value * 255)
+        )
+
+    @staticmethod
+    def apply_flash(
+        rgb,
+        flash_strength
+    ):
+        """
+        Boosts brightness temporarily without hue shift.
+        flash_strength ∈ [0,1]
+        """
+        if flash_strength <= 0.0:
+            return rgb
+
+        r, g, b = rgb
+
+        boost = 1.0 + 0.8 * flash_strength
+
+        r = int(min(255, r * boost))
+        g = int(min(255, g * boost))
+        b = int(min(255, b * boost))
 
         return r, g, b
