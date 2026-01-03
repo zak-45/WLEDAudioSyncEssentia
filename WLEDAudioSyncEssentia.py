@@ -4,6 +4,8 @@ import argparse
 import time
 import threading
 
+import pyaudio
+
 from configmanager import *
 
 from src.analysis_process import run_analysis_process
@@ -28,12 +30,25 @@ spinner = BeatPrinter()
 # Brightness & Saturation for Color
 danceability = 0.5 # default, if no AUX classifier
 
+
+def list_devices(p: pyaudio.PyAudio):
+    """Lists all available audio input devices."""
+    print("Available audio input devices:")
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        if info.get('maxInputChannels') > 0:
+            print(f"  [{info['index']}] {info['name']}")
+    print("\nUse the index with the --device-index flag to select a device.")
+
+
 def on_audio(audio, rms_rt):
     # stereo to mono
     if audio.size % 2 == 0:
         audio = audio.reshape(-1, 2).mean(axis=1)
 
+    # beat detector, dB
     beat, level = aubio_beat_detector.process(audio)
+
     if beat:
         spinner_char = spinner.get_char()
         sys.stdout.write(f"Beat detected {spinner_char} dB: {level:.2f} \r")
@@ -57,6 +72,19 @@ if __name__ == "__main__":
     freeze_support()
 
     print('Start WLEDAudioSyncEssentia')
+
+    if "NUITKA_ONEFILE_PARENT" in os.environ:
+        """
+        When this env var exist, this mean run from the one-file compressed executable.
+        This env not exist when run from the extracted program.
+        Expected way to work.
+        """
+        # Nuitka compressed version extract binaries to "WLEDVideoSync" folder (as set in the GitHub action)
+        # show message
+
+        from src.message import *
+
+        sys.exit(0)
 
     parser = argparse.ArgumentParser()
 
@@ -136,81 +164,91 @@ if __name__ == "__main__":
         help="Choose color type Genre centric for final hue"
     )
 
-    args = parser.parse_args()
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    OSC_IP = args.osc_ip
-    OSC_PORT = args.osc_port
-    OSC_PATH = args.osc_path
+    # Command to list devices
+    list_parser = subparsers.add_parser("list", help="List available audio input devices.")
 
-    COLOR1 = args.color1
+    args, unknown = parser.parse_known_args()
 
-    VISUAL_DEBUG = args.visual
-    DEBUG_DATA = args.debug
+    if args.command == "list":
+        list_devices(pyaudio.PyAudio())
 
-    USE_MACRO_GENRES = args.macro
-    MACRO_AGG = args.macro_agg
+    else:
 
-    DEVICE_INDEX = args.device_index
-    CHANNELS = args.channels
+        OSC_IP = args.osc_ip
+        OSC_PORT = args.osc_port
+        OSC_PATH = args.osc_path
 
-    # OSC Sender
-    osc = OSCSender(
-        ip=OSC_IP,
-        port=OSC_PORT,
-        path=OSC_PATH
-    )
+        COLOR1 = args.color1
 
-    if DEBUG_DATA:
-        print(
-            f"🎛 OSC → {OSC_IP}:{OSC_PORT} {OSC_PATH}"
+        VISUAL_DEBUG = args.visual
+        DEBUG_DATA = args.debug
+
+        USE_MACRO_GENRES = args.macro
+        MACRO_AGG = args.macro_agg
+
+        DEVICE_INDEX = args.device_index
+        CHANNELS = args.channels
+
+        # OSC Sender
+        osc = OSCSender(
+            ip=OSC_IP,
+            port=OSC_PORT,
+            path=OSC_PATH
         )
 
-    # read audio --> non-blocking call
-    main_audio = AudioStream(
-        on_audio,
-        device_index=DEVICE_INDEX,
-        channels=CHANNELS
-    )
+        if DEBUG_DATA:
+            print(
+                f"🎛 OSC → {OSC_IP}:{OSC_PORT} {OSC_PATH}"
+            )
 
-    audio_thread = threading.Thread(
-        target=main_audio.start,
-        daemon=True
-    )
-    audio_thread.start()
+        # read audio --> non-blocking call
+        main_audio = AudioStream(
+            on_audio,
+            device_index=DEVICE_INDEX,
+            channels=CHANNELS
+        )
 
-    # beat detector, samplerate need to be checked
-    aubio_beat_detector = AubioBeatDetector(
-        samplerate=cfg.AUDIO_DEVICE_RATE,  # IMPORTANT
-        hop_size=512,
-        win_size=1024,
-    )
+        audio_thread = threading.Thread(
+            target=main_audio.start,
+            daemon=True
+        )
+        audio_thread.start()
 
-    analysis_proc = Process(
-        target=run_analysis_process,
-        args=(
-            audio_queue,
-            "config/audio_runtime.json",
-            OSC_IP,
-            OSC_PORT,
-            OSC_PATH,
-            USE_MACRO_GENRES,
-            MACRO_AGG,
-            COLOR1,
-            DEBUG_DATA,
-            VISUAL_DEBUG,
-        ),
-        daemon=True
-    )
+        # beat detector, samplerate need to be checked
+        aubio_beat_detector = AubioBeatDetector(
+            samplerate=cfg.AUDIO_DEVICE_RATE,  # IMPORTANT
+            hop_size=512,
+            win_size=1024,
+        )
 
-    analysis_proc.start()
+        analysis_proc = Process(
+            target=run_analysis_process,
+            args=(
+                audio_queue,
+                "config/audio_runtime.json",
+                OSC_IP,
+                OSC_PORT,
+                OSC_PATH,
+                USE_MACRO_GENRES,
+                MACRO_AGG,
+                COLOR1,
+                DEBUG_DATA,
+                VISUAL_DEBUG,
+            ),
+            daemon=True
+        )
 
-    try:
-        # blocking call
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        analysis_proc.terminate()
-        main_audio.stop()
-        print("Stopping…")
+        analysis_proc.start()
+
+        try:
+            # blocking call
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            analysis_proc.terminate()
+            main_audio.stop()
+            print("Stopping…")
 
     print('End WLEDAudioSyncEssentia')
