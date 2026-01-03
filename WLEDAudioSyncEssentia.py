@@ -1,50 +1,31 @@
-import json
+import queue
+from multiprocessing import Process, Queue
 
-import numpy as np
 import argparse
 import time
 import threading
 
 from configmanager import *
 
-from src.analysis_worker import AnalysisWorker
+from src.analysis_process import run_analysis_process
+from src.beat_printer import BeatPrinter
 from src.utils import resample
 from src.audio_stream import AudioStream
-from src.smoothing import GenreSmoother
 from src.osc_sender import OSCSender
-from src.model_loader import discover_models
-from src.effnet_classifier import EffnetClassifier, AuxClassifier
-from src.adaptive_buffer import AdaptiveBuffer
-from src.mood_color_mapper import MoodColorMapper
-from src.visual_debug import VisualDebugOverlay
-
 from src.aubio_beat_detector import AubioBeatDetector
-
 from src.runtime_config import RuntimeConfig
 
 cfg = RuntimeConfig("config/audio_runtime.json")
 
-import queue
-audio_queue = queue.Queue(maxsize=8)
+# import queue
+audio_queue = Queue(maxsize=8)
 
-
+# Audio
 AUDIO_DEVICE_RATE = cfg.AUDIO_DEVICE_RATE
 MODEL_SAMPLE_RATE = cfg.MODEL_SAMPLE_RATE
-MIN_RMS = cfg.MIN_RMS
 
-BUFFER_SECONDS = cfg.BUFFER_SECONDS
-MIN_BUFFER_SECONDS = cfg.MIN_BUFFER_SECONDS
-MAX_BUFFER_SECONDS = cfg.MAX_BUFFER_SECONDS
-HOP_SECONDS = cfg.HOP_SECONDS
-
-SMOOTHING_ALPHA = cfg.SMOOTHING_ALPHA
 
 parser = argparse.ArgumentParser()
-
-CONFIDENCE_THRESHOLD = cfg.CONFIDENCE_THRESHOLD
-STABILITY_FRAMES = cfg.STABILITY_FRAMES
-BUFFER_GROWTH_RATE = cfg.BUFFER_GROWTH_RATE
-BUFFER_SHRINK_RATE = cfg.BUFFER_SHRINK_RATE
 
 
 parser.add_argument(
@@ -121,41 +102,19 @@ parser.add_argument(
 parser.add_argument(
     "--color1",
     action="store_true",
-    help="Choose color type 1 for final hue"
-)
-parser.add_argument(
-    "--color2",
-    action="store_true",
-    help="Choose color type 2 for final hue"
+    help="Choose color type Genre centric for final hue"
 )
 
 
 args = parser.parse_args()
 
 COLOR1=args.color1
-COLOR2=args.color2
 
 VISUAL_DEBUG = args.visual
 DEBUG_DATA = args.debug
 
-visual = VisualDebugOverlay() if VISUAL_DEBUG else None
-
 is_silent = False
 last_non_silent_time = time.time()
-
-adaptive = AdaptiveBuffer(
-    MIN_BUFFER_SECONDS,
-    MAX_BUFFER_SECONDS,
-    BUFFER_SECONDS,
-    CONFIDENCE_THRESHOLD,
-    STABILITY_FRAMES,
-    BUFFER_GROWTH_RATE,
-    BUFFER_SHRINK_RATE
-)
-
-NEEDED = int(MODEL_SAMPLE_RATE * adaptive.current)
-
-HOP = int(MODEL_SAMPLE_RATE * HOP_SECONDS)
 
 MODELS_DIR = root_path("models")
 
@@ -174,13 +133,6 @@ AUX = args.aux
 
 SILENCE_TIMEOUT = cfg.SILENCE_TIMEOUT  # seconds
 
-buffer = np.zeros(0, dtype=np.float32)
-
-# Main Effnet discogs model with Music Genre Detection
-clf = EffnetClassifier()
-
-# Smoother
-smooth = GenreSmoother(clf.labels, SMOOTHING_ALPHA)
 
 # OSC Sender
 osc = OSCSender(
@@ -189,18 +141,10 @@ osc = OSCSender(
     path=OSC_PATH
 )
 
-if DEBUG_DATA:
-    print(
-        f"🎛 OSC → {OSC_IP}:{OSC_PORT} {OSC_PATH}"
-    )
+spinner = BeatPrinter()
 
 # Brightness & Saturation for Color
 danceability = 0.5 # default, if no AUX classifier
-
-# mood color, read JSON for genre labels
-mood_mapper = MoodColorMapper("models/genre_discogs400-discogs-effnet-1.json",
-                              "config/mood_valence.json")
-
 
 def on_audio(audio, rms_rt):
     if audio.size % 2 == 0:
@@ -208,9 +152,13 @@ def on_audio(audio, rms_rt):
 
     beat = aubio_beat_detector.process(audio)
     if beat:
-        print('beat detected')
+        spinner_char = spinner.get_char()
+        sys.stdout.write(
+            f"Beat detected {spinner_char} \r")
+        osc.send('/WASEssentia/audio/beat', spinner_char)
 
     audio = resample(audio, AUDIO_DEVICE_RATE, MODEL_SAMPLE_RATE)
+
 
     try:
         audio_queue.put_nowait((audio, rms_rt, time.time()))
@@ -221,27 +169,13 @@ def on_audio(audio, rms_rt):
         except queue.Empty:
             pass
 
+
 if __name__ == "__main__":
-    # fetch all models from folder
-    models = discover_models(MODELS_DIR)
-    #
-    aux_classifiers = []
-    # load models and set them to list for type AUX
-    for m in models:
-        if m["type"] == "genre":
 
-            if DEBUG_DATA:
-                print(f"🎵 Genre model loaded: {m['name']}")
-
-        else:
-
-            if AUX:
-                aux_classifiers.append(
-                    AuxClassifier(m["name"], m["pb"], m["json"], m["output_name"], agg=MACRO_AGG)
-                )
-
-                if DEBUG_DATA:
-                    print(f"🎛 Aux model loaded: {m['name']}")
+    if DEBUG_DATA:
+        print(
+            f"🎛 OSC → {OSC_IP}:{OSC_PORT} {OSC_PATH}"
+        )
 
     # read audio --> non-blocking call
     main_audio = AudioStream(
@@ -263,45 +197,33 @@ if __name__ == "__main__":
         win_size=1024,
     )
 
-    analysis = AnalysisWorker(
-        audio_queue=audio_queue,
-        cfg=cfg,
-        clf=clf,
-        smooth=smooth,
-        adaptive=adaptive,
-        osc=osc,
-        mood_mapper=mood_mapper,
-        aux_classifiers=aux_classifiers,
-        visual=visual if VISUAL_DEBUG else None,
-        use_macro=USE_MACRO_GENRES,
-        macro_agg=MACRO_AGG,
-        color1=COLOR1,
-        debug=DEBUG_DATA
+    analysis_proc = Process(
+        target=run_analysis_process,
+        args=(
+            audio_queue,
+            "config/audio_runtime.json",
+            OSC_IP,
+            OSC_PORT,
+            OSC_PATH,
+            USE_MACRO_GENRES,
+            MACRO_AGG,
+            COLOR1,
+            DEBUG_DATA,
+            VISUAL_DEBUG,
+        ),
+        daemon=True
     )
 
-    threading.Thread(
-        target=analysis.run,
-        daemon=True
-    ).start()
+    analysis_proc.start()
 
-    # display visual debug overlay if enabled
-    if VISUAL_DEBUG:
-        try:
-            while True:
-                visual.render()
-                time.sleep(0.16)  # 60 FPS
-        except KeyboardInterrupt:
-            print("Stopping…")
-            main_audio.stop()
-            visual.close()
-
-    else:
-
-        try:
-            # blocking call
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            print("Stopping…")
+    try:
+        # blocking call
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        analysis_proc.terminate()
+        main_audio.stop()
+        print("Stopping…")
 
     print('End WLEDAudioSyncEssentia')
+    sys.exit()
