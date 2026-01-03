@@ -4,6 +4,7 @@ from multiprocessing import Process, Queue
 import argparse
 import time
 import threading
+from multiprocessing.spawn import freeze_support
 
 from configmanager import *
 
@@ -25,121 +26,12 @@ AUDIO_DEVICE_RATE = cfg.AUDIO_DEVICE_RATE
 MODEL_SAMPLE_RATE = cfg.MODEL_SAMPLE_RATE
 
 
-parser = argparse.ArgumentParser()
 
-
-parser.add_argument(
-    "--macro",
-    action="store_true",
-    help="Collapse Discogs subgenres into macro genres"
-)
-
-parser.add_argument(
-    "--macro-agg",
-    choices=["mean", "max"],
-    default="mean",
-    help="Aggregation method for macro genres (default: mean)"
-)
-
-parser.add_argument(
-    "--osc-ip",
-    default="127.0.0.1",
-    help="OSC server IP address (default: 127.0.0.1)"
-)
-
-parser.add_argument(
-    "--osc-port",
-    type=int,
-    default=12000,
-    help="OSC server port (default: 12000)"
-)
-
-parser.add_argument(
-    "--osc-path",
-    default="/genre",
-    help="OSC message path (default: /genre)"
-)
-
-parser.add_argument(
-    "--device-index",
-    type=int,
-    default=None,
-    help="PyAudio input device index (default: system default)"
-)
-
-parser.add_argument(
-    "--channels",
-    type=int,
-    default=2,
-    help="PyAudio input device channel number (default: 2)"
-)
-
-parser.add_argument(
-    "--show_raw",
-    action="store_true",
-    help="If present, Print RAW values"
-)
-
-
-parser.add_argument(
-    "--aux",
-    action="store_true",
-    help="If present, show AUX values"
-)
-
-parser.add_argument(
-    "--visual",
-    action="store_true",
-    help="Enable visual debug overlay"
-)
-
-parser.add_argument(
-    "--debug",
-    action="store_true",
-    help="Print debug datas"
-)
-
-parser.add_argument(
-    "--color1",
-    action="store_true",
-    help="Choose color type Genre centric for final hue"
-)
-
-
-args = parser.parse_args()
-
-COLOR1=args.color1
-
-VISUAL_DEBUG = args.visual
-DEBUG_DATA = args.debug
 
 is_silent = False
 last_non_silent_time = time.time()
 
 MODELS_DIR = root_path("models")
-
-USE_MACRO_GENRES = args.macro
-MACRO_AGG = args.macro_agg
-
-OSC_IP = args.osc_ip
-OSC_PORT = args.osc_port
-OSC_PATH = args.osc_path
-
-DEVICE_INDEX = args.device_index
-CHANNELS = args.channels
-
-PRINT_RAW = args.show_raw
-AUX = args.aux
-
-SILENCE_TIMEOUT = cfg.SILENCE_TIMEOUT  # seconds
-
-
-# OSC Sender
-osc = OSCSender(
-    ip=OSC_IP,
-    port=OSC_PORT,
-    path=OSC_PATH
-)
 
 spinner = BeatPrinter()
 
@@ -171,6 +63,114 @@ def on_audio(audio, rms_rt):
 
 
 if __name__ == "__main__":
+    freeze_support()
+
+
+    print('Start WLEDAudioSyncEssentia')
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--macro",
+        action="store_true",
+        help="Collapse Discogs subgenres into macro genres"
+    )
+
+    parser.add_argument(
+        "--macro-agg",
+        choices=["mean", "max"],
+        default="mean",
+        help="Aggregation method for macro genres (default: mean)"
+    )
+
+    parser.add_argument(
+        "--osc-ip",
+        default="127.0.0.1",
+        help="OSC server IP address (default: 127.0.0.1)"
+    )
+
+    parser.add_argument(
+        "--osc-port",
+        type=int,
+        default=12000,
+        help="OSC server port (default: 12000)"
+    )
+
+    parser.add_argument(
+        "--osc-path",
+        default="/genre",
+        help="OSC message path (default: /genre)"
+    )
+
+    parser.add_argument(
+        "--device-index",
+        type=int,
+        default=None,
+        help="PyAudio input device index (default: system default)"
+    )
+
+    parser.add_argument(
+        "--channels",
+        type=int,
+        default=2,
+        help="PyAudio input device channel number (default: 2)"
+    )
+
+    parser.add_argument(
+        "--show_raw",
+        action="store_true",
+        help="If present, Print RAW values"
+    )
+
+    parser.add_argument(
+        "--aux",
+        action="store_true",
+        help="If present, show AUX values"
+    )
+
+    parser.add_argument(
+        "--visual",
+        action="store_true",
+        help="Enable visual debug overlay"
+    )
+
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print debug datas"
+    )
+
+    parser.add_argument(
+        "--color1",
+        action="store_true",
+        help="Choose color type Genre centric for final hue"
+    )
+
+    args = parser.parse_args()
+
+    OSC_IP = args.osc_ip
+    OSC_PORT = args.osc_port
+    OSC_PATH = args.osc_path
+
+    COLOR1 = args.color1
+
+    VISUAL_DEBUG = args.visual
+    DEBUG_DATA = args.debug
+
+    USE_MACRO_GENRES = args.macro
+    MACRO_AGG = args.macro_agg
+
+    DEVICE_INDEX = args.device_index
+    CHANNELS = args.channels
+
+    # OSC Sender
+    osc = OSCSender(
+        ip=OSC_IP,
+        port=OSC_PORT,
+        path=OSC_PATH
+    )
+
+
 
     if DEBUG_DATA:
         print(
