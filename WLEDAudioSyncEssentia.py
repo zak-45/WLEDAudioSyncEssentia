@@ -33,11 +33,12 @@ def on_audio(audio, rms_rt):
     if audio.size % 2 == 0:
         audio = audio.reshape(-1, 2).mean(axis=1)
 
-    beat = aubio_beat_detector.process(audio)
+    beat, level = aubio_beat_detector.process(audio)
     if beat:
         spinner_char = spinner.get_char()
-        sys.stdout.write(f"Beat detected {spinner_char} \r")
+        sys.stdout.write(f"Beat detected {spinner_char} dB: {level:.2f} \r")
         osc.send('/WASEssentia/audio/beat', spinner_char)
+        osc.send('/WASEssentia/audio/dB', level)
 
     # resample to model rate
     audio = resample(audio, AUDIO_DEVICE_RATE, MODEL_SAMPLE_RATE)

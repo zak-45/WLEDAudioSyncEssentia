@@ -39,6 +39,7 @@ class AubioBeatDetector:
             audio_block = audio_block.mean(axis=1)
 
         audio_block = audio_block.astype(np.float32)
+        db_level = aubio.db_spl(audio_block)
 
         # append to internal buffer
         self._buffer = np.concatenate([self._buffer, audio_block])
@@ -56,7 +57,9 @@ class AubioBeatDetector:
                 beat_strength = 1.0
                 self.last_beat_time = self.tempo.get_last_s()
 
-        return beat_strength
+
+
+        return beat_strength, db_level
 
     def get_bpm(self) -> float:
         return float(self.tempo.get_bpm())
