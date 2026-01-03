@@ -1,10 +1,8 @@
+from multiprocessing import Process, Queue, freeze_support
 import queue
-from multiprocessing import Process, Queue
-
 import argparse
 import time
 import threading
-from multiprocessing.spawn import freeze_support
 
 from configmanager import *
 
@@ -25,32 +23,24 @@ audio_queue = Queue(maxsize=8)
 AUDIO_DEVICE_RATE = cfg.AUDIO_DEVICE_RATE
 MODEL_SAMPLE_RATE = cfg.MODEL_SAMPLE_RATE
 
-
-
-
-is_silent = False
-last_non_silent_time = time.time()
-
-MODELS_DIR = root_path("models")
-
 spinner = BeatPrinter()
 
 # Brightness & Saturation for Color
 danceability = 0.5 # default, if no AUX classifier
 
 def on_audio(audio, rms_rt):
+    # stereo to mono
     if audio.size % 2 == 0:
         audio = audio.reshape(-1, 2).mean(axis=1)
 
     beat = aubio_beat_detector.process(audio)
     if beat:
         spinner_char = spinner.get_char()
-        sys.stdout.write(
-            f"Beat detected {spinner_char} \r")
+        sys.stdout.write(f"Beat detected {spinner_char} \r")
         osc.send('/WASEssentia/audio/beat', spinner_char)
 
+    # resample to model rate
     audio = resample(audio, AUDIO_DEVICE_RATE, MODEL_SAMPLE_RATE)
-
 
     try:
         audio_queue.put_nowait((audio, rms_rt, time.time()))
@@ -64,7 +54,6 @@ def on_audio(audio, rms_rt):
 
 if __name__ == "__main__":
     freeze_support()
-
 
     print('Start WLEDAudioSyncEssentia')
 
@@ -170,8 +159,6 @@ if __name__ == "__main__":
         path=OSC_PATH
     )
 
-
-
     if DEBUG_DATA:
         print(
             f"🎛 OSC → {OSC_IP}:{OSC_PORT} {OSC_PATH}"
@@ -226,4 +213,3 @@ if __name__ == "__main__":
         print("Stopping…")
 
     print('End WLEDAudioSyncEssentia')
-    sys.exit()
