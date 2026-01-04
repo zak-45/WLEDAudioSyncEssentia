@@ -96,6 +96,7 @@ jobs:
           company-name: zak-45
           file-version: ${{github.event.inputs.mytag}}
           windows-icon-from-ico: assets/WLEDAudioSync30.ico
+          windows-console-mode: attach
           macos-app-icon: assets/WLEDAudioSync30.ico
           mode: onefile
           onefile-tempdir-spec: ./WLEDAudioSyncEssentia
