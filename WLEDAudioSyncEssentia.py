@@ -222,6 +222,10 @@ if __name__ == "__main__":
         finally:
             p_temp.terminate()
 
+        if AUDIO_DEVICE_RATE is None:
+            AUDIO_DEVICE_RATE = int(device_info['defaultSampleRate'])
+            print(f"Using device sample rate: {AUDIO_DEVICE_RATE} Hz")
+
         if args.channels is not None:
             CHANNELS = args.channels
 
@@ -238,9 +242,9 @@ if __name__ == "__main__":
         )
         audio_thread.start()
 
-        # beat detector, samplerate need to be checked
+        # beat detector, samplerate provide from config or from audio (need to be accurate to avoid false value)
         aubio_beat_detector = AubioBeatDetector(
-            samplerate=cfg.AUDIO_DEVICE_RATE,  # IMPORTANT
+            samplerate=AUDIO_DEVICE_RATE,  # IMPORTANT
             hop_size=512,
             win_size=1024,
         )
