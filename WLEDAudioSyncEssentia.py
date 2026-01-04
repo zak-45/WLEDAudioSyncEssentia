@@ -74,7 +74,7 @@ if __name__ == "__main__":
 
     print('Start WLEDAudioSyncEssentia')
 
-    if "NUITKA_ONEFILE_PARENT" not in os.environ:
+    if "NUITKA_ONEFILE_PARENT" in os.environ:
         """
         When this env var exist, this mean run from the one-file compressed executable.
         This env not exist when run from the extracted program.
