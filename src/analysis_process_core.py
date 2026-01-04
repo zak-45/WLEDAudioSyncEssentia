@@ -16,28 +16,6 @@ from src.utils import compute_color
 # fetch all models from folder
 models = discover_models("models")
 #
-DEBUG_DATA = True
-AUX = True
-MACRO_AGG = "mean"
-
-aux_classifiers = []
-# load models and set them to list for type AUX
-for m in models:
-    if m["type"] == "genre":
-
-        if DEBUG_DATA:
-            print(f"🎵 Genre model loaded: {m['name']}")
-
-    else:
-
-        if AUX:
-            aux_classifiers.append(
-                AuxClassifier(m["name"], m["pb"], m["json"], m["output_name"], agg=MACRO_AGG)
-            )
-
-            if DEBUG_DATA:
-                print(f"🎛 Aux model loaded: {m['name']}")
-
 
 class AnalysisCore:
     def __init__(
@@ -50,9 +28,11 @@ class AnalysisCore:
         macro_agg,
         color1,
         debug,
+        aux,
     ):
+        self.aux = aux
         self.danceability = 0.5
-        self.aux_classifiers = aux_classifiers
+        self.aux_classifiers = []
         self.last_non_silent_time = time.time()
         self.audio_queue = audio_queue
         self.cfg = cfg
@@ -70,6 +50,9 @@ class AnalysisCore:
             self.clf.labels,
             cfg.SMOOTHING_ALPHA
         )
+
+        if self.aux:
+            self.load_aux()
 
         self.mood_mapper = MoodColorMapper(
             "models/genre_discogs400-discogs-effnet-1.json",
@@ -349,3 +332,23 @@ class AnalysisCore:
 
         if self.debug:
             print("🎵 AUDIO RESUMED")
+
+    # ==================================================
+    def load_aux(self):
+        self.aux_classifiers = []
+        # load models and set them to list for type AUX
+        for mod in models:
+            if mod["type"] == "genre":
+
+                if self.debug:
+                    print(f"🎵 Genre model loaded: {mod['name']}")
+
+            else:
+
+                if self.aux:
+                    self.aux_classifiers.append(
+                        AuxClassifier(mod["name"], mod["pb"], mod["json"], mod["output_name"], agg=self.macro_agg)
+                    )
+
+                    if self.debug:
+                        print(f"🎛 Aux model loaded: {mod['name']}")

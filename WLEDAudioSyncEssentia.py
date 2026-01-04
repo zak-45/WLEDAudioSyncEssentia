@@ -193,6 +193,8 @@ if __name__ == "__main__":
         DEVICE_INDEX = args.device_index
         CHANNELS = args.channels
 
+        AUX = args.aux
+
         # OSC Sender
         osc = OSCSender(
             ip=OSC_IP,
@@ -238,6 +240,7 @@ if __name__ == "__main__":
                 COLOR1,
                 DEBUG_DATA,
                 VISUAL_DEBUG,
+                AUX,
             ),
             daemon=True
         )

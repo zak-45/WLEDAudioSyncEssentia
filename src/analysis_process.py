@@ -11,6 +11,7 @@ def run_analysis_process(
     color1,
     debug,
     visual_enabled,
+    aux,
 ):
     """
     Windows-safe multiprocessing entry point.
@@ -42,6 +43,7 @@ def run_analysis_process(
         macro_agg=macro_agg,
         color1=color1,
         debug=debug,
+        aux=aux,
     )
 
     print("🧠 Analysis process ready")
