@@ -1,3 +1,4 @@
+import sys
 from multiprocessing import Process, Queue, freeze_support
 import queue
 import argparse
@@ -73,18 +74,19 @@ if __name__ == "__main__":
 
     print('Start WLEDAudioSyncEssentia')
 
-    if "NUITKA_ONEFILE_PARENT" in os.environ:
+    if "NUITKA_ONEFILE_PARENT" not in os.environ:
         """
         When this env var exist, this mean run from the one-file compressed executable.
         This env not exist when run from the extracted program.
         Expected way to work.
         """
-        # Nuitka compressed version extract binaries to "WLEDVideoSync" folder (as set in the GitHub action)
+        # Nuitka compressed version extract binaries to "WLEDAudioSyncEssentia" folder (as set in the GitHub action)
         # show message
 
-        from src.message import *
-
-        sys.exit(0)
+        from src.message import msg
+        msg.message()
+        input('enter to continue...')
+        sys.exit()
 
     parser = argparse.ArgumentParser()
 

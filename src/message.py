@@ -12,11 +12,16 @@ message.append("Extraction folder:\n", style="bold")
 message.append(f"{install_path}\n\n", style="cyan")
 message.append("➡ Please navigate to this folder and run the application.", style="yellow")
 
-console.print(
-    Panel(
-        message,
-        title="Installation Complete",
-        border_style="green",
-        padding=(1, 2),
-    )
-)
+class msg():
+    def init(self):
+        pass
+    @staticmethod
+    def message():
+        console.print(
+            Panel(
+                message,
+                title="Installation Complete",
+                border_style="green",
+                padding=(1, 2),
+            )
+        )
