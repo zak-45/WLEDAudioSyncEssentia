@@ -17,7 +17,7 @@ from src.osc_sender import OSCSender
 from src.aubio_beat_detector import AubioBeatDetector
 from src.runtime_config import RuntimeConfig
 
-cfg = RuntimeConfig("config/audio_runtime.json")
+cfg = RuntimeConfig(root_path("config/audio_runtime.json"))
 
 # import queue
 audio_queue = Queue(maxsize=8)
@@ -231,7 +231,7 @@ if __name__ == "__main__":
             target=run_analysis_process,
             args=(
                 audio_queue,
-                "config/audio_runtime.json",
+                root_path("config/audio_runtime.json"),
                 OSC_IP,
                 OSC_PORT,
                 OSC_PATH,
