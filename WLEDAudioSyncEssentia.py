@@ -23,14 +23,12 @@ cfg = RuntimeConfig(root_path("config/audio_runtime.json"))
 audio_queue = Queue(maxsize=8)
 
 # Audio
+DEVICE_INDEX = cfg.DEVICE_INDEX
 AUDIO_DEVICE_RATE = cfg.AUDIO_DEVICE_RATE
 MODEL_SAMPLE_RATE = cfg.MODEL_SAMPLE_RATE
+CHANNELS = cfg.CHANNELS
 
 spinner = BeatPrinter()
-
-# Brightness & Saturation for Color
-danceability = 0.5 # default, if no AUX classifier
-
 
 def list_devices(p: pyaudio.PyAudio):
     """Lists all available audio input devices."""
@@ -190,9 +188,6 @@ if __name__ == "__main__":
         USE_MACRO_GENRES = args.macro
         MACRO_AGG = args.macro_agg
 
-        DEVICE_INDEX = args.device_index
-        CHANNELS = args.channels
-
         AUX = args.aux
 
         # OSC Sender
@@ -206,6 +201,29 @@ if __name__ == "__main__":
             print(
                 f"🎛 OSC → {OSC_IP}:{OSC_PORT} {OSC_PATH}"
             )
+
+        # --- Device Selection ---
+        p_temp = pyaudio.PyAudio()
+        try:
+            if args.device_index is not None:
+                device_info = p_temp.get_device_info_by_index(args.device_index)
+                print(f"Attempting to use specified device: [{device_info['index']}] {device_info['name']}")
+                DEVICE_INDEX = args.device_index
+            elif DEVICE_INDEX is not None:
+                device_info = p_temp.get_device_info_by_index(DEVICE_INDEX)
+                print(f"Attempting to use specified device from config: [{device_info['index']}] {device_info['name']}")
+            else:
+                device_info = p_temp.get_default_input_device_info()
+                args.device = device_info['index']
+                print(f"No device specified, using default input: [{device_info['index']}] {device_info['name']}")
+        except (IOError, IndexError):
+            print(f"Error: Device index {DEVICE_INDEX} is invalid. Use 'list' command to see available devices.")
+            sys.exit(1)
+        finally:
+            p_temp.terminate()
+
+        if args.channels is not None:
+            CHANNELS = args.channels
 
         # read audio --> non-blocking call
         main_audio = AudioStream(

@@ -11,6 +11,14 @@ class RuntimeConfig:
         return self.cfg["audio"]["device_rate"]
 
     @property
+    def DEVICE_INDEX(self):
+        return self.cfg["audio"]["device_index"]
+
+    @property
+    def CHANNELS(self):
+        return self.cfg["audio"]["channels_default"]
+
+    @property
     def MODEL_SAMPLE_RATE(self):
         return self.cfg["audio"]["model_rate"]
 
