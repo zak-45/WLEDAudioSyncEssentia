@@ -81,8 +81,8 @@ if __name__ == "__main__":
         # Nuitka compressed version extract binaries to "WLEDAudioSyncEssentia" folder (as set in the GitHub action)
         # show message
 
-        from src.message import msg
-        msg.message()
+        from src.message import Msg
+        Msg.message()
         input('enter to continue...')
         sys.exit()
 

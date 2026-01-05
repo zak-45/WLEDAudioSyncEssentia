@@ -1,3 +1,10 @@
+"""
+WLEDAudioSyncEssentia
+---------------------
+Message module
+for displaying extraction status.
+"""
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -12,16 +19,16 @@ message.append("Extraction folder:\n", style="bold")
 message.append(f"{install_path}\n\n", style="cyan")
 message.append("➡ Please navigate to this folder and run the application.", style="yellow")
 
-class msg():
-    def init(self):
-        pass
-    @staticmethod
-    def message():
-        console.print(
-            Panel(
-                message,
-                title="Installation Complete",
-                border_style="green",
-                padding=(1, 2),
-            )
-        )
+class Msg:
+   def init(self):
+       pass
+   @staticmethod
+   def message():
+       console.print(
+           Panel(
+               message,
+               title="Installation Complete",
+               border_style="green",
+               padding=(1, 2),
+           )
+       )
