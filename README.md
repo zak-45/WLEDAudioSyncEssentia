@@ -123,6 +123,17 @@ HOP_SECONDS = 0.5         # Analysis interval
 SMOOTHING_ALPHA = 0.4     # Smoothing factor for predictions
 ```
 
+## Credits
+
+This project makes extensive use of the Essentia open-source library for audio analysis and music information retrieval, 
+which is developed by the Music Technology Group (MTG) at Universitat Pompeu Fabra. 
+Special thanks to the researchers and developers behind the pre-trained TensorFlow models used in this project. 
+## Model Licenses
+While the source code in this repository is licensed under MIT, the Essentia models (files ending in .pb) 
+downloaded separately are subject to their own licenses, typically Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0). 
+If you intend to use this project for commercial purposes, please ensure you comply with the licensing terms of the specific models you download from the Essentia Models repository. 
+
+
 ## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
