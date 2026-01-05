@@ -224,7 +224,8 @@ if __name__ == "__main__":
 
         if AUDIO_DEVICE_RATE is None:
             AUDIO_DEVICE_RATE = int(device_info['defaultSampleRate'])
-            print(f"Using device sample rate: {AUDIO_DEVICE_RATE} Hz")
+
+        print(f"Using device sample rate: {AUDIO_DEVICE_RATE} Hz")
 
         if args.channels is not None:
             CHANNELS = args.channels
