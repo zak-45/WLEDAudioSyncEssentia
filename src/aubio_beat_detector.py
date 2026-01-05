@@ -28,7 +28,7 @@ class AubioBeatDetector:
 
         self.last_beat_time = 0.0
 
-    def process(self, audio_block: np.ndarray) -> float:
+    def process(self, audio_block: np.ndarray) -> tuple[float, float]:
         """
         Feed arbitrary-sized audio blocks.
         Internally processes fixed hop_size frames.
@@ -56,8 +56,6 @@ class AubioBeatDetector:
             if is_beat:
                 beat_strength = 1.0
                 self.last_beat_time = self.tempo.get_last_s()
-
-
 
         return beat_strength, db_level
 

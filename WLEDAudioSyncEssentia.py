@@ -41,8 +41,11 @@ def list_devices(p: pyaudio.PyAudio):
 
 
 def on_audio(audio, rms_rt):
-    # stereo to mono
-    if audio.size % 2 == 0:
+    # Convert stereo to mono only if the stream has 2 channels
+    if CHANNELS == 2:
+        # interleaved stereo: [L0, R0, L1, R1, ...]
+        frames = audio.size // 2
+        audio = audio[:frames * 2]          # drop odd sample if any
         audio = audio.reshape(-1, 2).mean(axis=1)
 
     # beat detector, dB
@@ -172,7 +175,11 @@ if __name__ == "__main__":
     args, unknown = parser.parse_known_args()
 
     if args.command == "list":
-        list_devices(pyaudio.PyAudio())
+        pa = pyaudio.PyAudio()
+        try:
+            list_devices(pa)
+        finally:
+            pa.terminate()
 
     else:
 
@@ -214,7 +221,7 @@ if __name__ == "__main__":
                 print(f"Attempting to use specified device from config: [{device_info['index']}] {device_info['name']}")
             else:
                 device_info = p_temp.get_default_input_device_info()
-                args.device = device_info['index']
+                DEVICE_INDEX = device_info['index']
                 print(f"No device specified, using default input: [{device_info['index']}] {device_info['name']}")
         except (IOError, IndexError):
             print(f"Error: Device index {DEVICE_INDEX} is invalid. Use 'list' command to see available devices.")
