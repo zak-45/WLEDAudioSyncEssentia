@@ -1,4 +1,12 @@
+<div align="center">
+
 # WLEDAudioSyncEssentia
+ **A Cross-Platform (Windows / Linux / macOS) Portable Application.**
+
+</div>
+
+---
+## Introduction
 
 Real-time audio analysis and genre classification using the Essentia library. This tool captures audio, detects musical genres, moods, and other characteristics, and broadcasts the data via **OSC (Open Sound Control)**.
 
@@ -29,6 +37,17 @@ This project captures real-time audio input, analyzes it using Essentia's machin
 *   **OSC Receiver**: A target application to receive the OSC messages.
 
 ## Installation
+
+ ### Portable (Recommended)
+ 1.  **Download**: Grab the latest release for your OS from the **Releases Page**.
+ 2.  **Extract**:
+     -  Run the downloaded executable. It will extract application into a `WLEDAudioSyncEssentia` folder.
+
+ 3.  **Run**:
+     -   Open a terminal and navigate to the extracted `WLEDAudioSyncEssentia` folder.
+     -   Run the `WLEDAudioSyncEssentia-{OS}` executable.
+
+ ### From Source (Manual)
 
 1.  **Clone the repository:**
     ```bash
