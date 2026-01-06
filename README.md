@@ -1,6 +1,7 @@
 <div align="center">
 
 # WLEDAudioSyncEssentia
+ ### Real-time audio analysis and genre classification.
  **A Cross-Platform (Windows / Linux / macOS) Portable Application.**
 
 </div>
