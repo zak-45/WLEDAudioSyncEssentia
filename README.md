@@ -86,9 +86,9 @@ Run the main script to start listening and analyzing.
 
 ### Basic Usage
 ```bash
-python WLEDAudioSyncEssentia.py
+python WLEDAudioSyncEssentia.py or WLEDAudioSyncEssentia-{OS}
 ```
-By default, this sends OSC messages to `127.0.0.1:12000` at path `/genre`.
+By default, this sends OSC messages to `127.0.0.1:12000` at path `/WASEssentia/genre/`.
 
 ### Command Line Arguments
 
