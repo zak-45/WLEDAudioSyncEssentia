@@ -81,7 +81,7 @@ jobs:
       - name: Windows specific Essentia
         if: matrix.os == 'windows-latest'
         run: |
-          pip install assets/essentia-2.1b6.dev0-cp313-cp313-win_amd64.whl
+          pip install win/essentia-2.1b6.dev0-cp313-cp313-win_amd64.whl
           echo "ARCHITECTURE=amd64" >> $GITHUB_ENV
 
       - name: Install Dependencies for All
