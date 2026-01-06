@@ -28,6 +28,9 @@ AUDIO_DEVICE_RATE = cfg.AUDIO_DEVICE_RATE
 MODEL_SAMPLE_RATE = cfg.MODEL_SAMPLE_RATE
 CHANNELS = cfg.CHANNELS
 
+last_beat_time = 0.0
+BEAT_HOLD = 0.15  # seconds, prevents double triggers
+
 spinner = BeatPrinter()
 
 def list_devices(p: pyaudio.PyAudio):
@@ -41,6 +44,7 @@ def list_devices(p: pyaudio.PyAudio):
 
 
 def on_audio(audio, rms_rt):
+    global last_beat_time
     # Convert stereo to mono only if the stream has 2 channels
     if CHANNELS == 2:
         # interleaved stereo: [L0, R0, L1, R1, ...]
@@ -50,8 +54,10 @@ def on_audio(audio, rms_rt):
 
     # beat detector, dB
     beat, level = aubio_beat_detector.process(audio)
+    now = time.time()
 
-    if beat:
+    if beat and (now - last_beat_time) > BEAT_HOLD:
+        last_beat_time = now
         spinner_char = spinner.get_char()
         sys.stdout.write(f"Beat detected {spinner_char} dB: {level:.2f} \r")
         osc.send('/WASEssentia/audio/beat', spinner_char)
@@ -271,6 +277,7 @@ if __name__ == "__main__":
                 DEBUG_DATA,
                 VISUAL_DEBUG,
                 AUX,
+                last_beat_time
             ),
             daemon=True
         )

@@ -6,6 +6,7 @@ import numpy as np
 
 from src.effnet_classifier import EffnetClassifier, AuxClassifier
 from src.genre_hues import GENRE_HUES
+from config.genre_flash_shape import GENRE_FLASH_SHAPES
 from src.macro_genres import collapse_to_macro
 from src.model_loader import discover_models
 from src.smoothing import GenreSmoother
@@ -16,6 +17,7 @@ from src.utils import compute_color
 # fetch all models from folder
 models = discover_models("models")
 #
+DEFAULT_FLASH_SHAPE = "pulse"
 
 class AnalysisCore:
     def __init__(
@@ -29,7 +31,9 @@ class AnalysisCore:
         color1,
         debug,
         aux,
+        last_beat_time,
     ):
+        self.accent_strength = 0.0
         self.aux = aux
         self.danceability = 0.5
         self.aux_classifiers = []
@@ -43,6 +47,7 @@ class AnalysisCore:
         self.use_macro = use_macro
         self.macro_agg = macro_agg
         self.is_silent = False
+        self.last_beat_time = last_beat_time
 
         # -------- MODELS (SAFE HERE) --------
         self.clf = EffnetClassifier()
@@ -264,6 +269,32 @@ class AnalysisCore:
                 confidence=top_conf
             )
 
+            # Sync beats with analysis window
+            segment_start = ts - (len(segment) / self.cfg.MODEL_SAMPLE_RATE)
+            segment_end = ts
+
+            beat_in_window = (
+                    self.last_beat_time >= segment_start
+                    and self.last_beat_time <= segment_end
+            )
+
+            # analysis tick
+            self.update_accent_strength(
+                beat=beat_in_window,
+                energy=energy,
+                genre=macro
+            )
+
+            self.accent_strength = max(0.0, self.accent_strength)
+
+            # always apply flash if there's any remaining strength
+            if self.accent_strength > 0.01:
+                accent_r, accent_g, accent_b = self.mood_mapper.apply_flash(
+                    (accent_r, accent_g, accent_b),
+                    flash_strength=self.accent_strength
+                )
+
+
             # Debug / genre-centric override
             if self.color1:
                 genre_brightness = max(0.1, min(1.0, energy))
@@ -352,3 +383,48 @@ class AnalysisCore:
 
                     if self.debug:
                         print(f"🎛 Aux model loaded: {mod['name']}")
+
+    # ==================================================
+    def update_accent_strength(self, beat, energy, genre):
+        shape = GENRE_FLASH_SHAPES.get(genre, DEFAULT_FLASH_SHAPE)
+        decay = 0.0
+
+        if beat:
+            if shape == "punch":
+                self.accent_strength = 1.0
+
+            elif shape == "hold":
+                self.accent_strength = max(self.accent_strength, 1.0)
+
+            elif shape == "glow":
+                self.accent_strength += 0.6
+                self.accent_strength = min(self.accent_strength, 1.0)
+
+            elif shape == "bounce":
+                self.accent_strength = 1.0
+
+            elif shape == "pulse":
+                self.accent_strength = 0.8
+
+        # ---- decay behavior ----
+        if shape == "punch":
+            decay = 0.75 - 0.25 * energy
+
+        elif shape == "hold":
+            decay = 0.92 - 0.10 * energy
+
+        elif shape == "glow":
+            decay = 0.97 - 0.05 * energy
+
+        elif shape == "bounce":
+            decay = 0.85
+
+        elif shape == "pulse":
+            decay = 0.88 - 0.12 * energy
+
+        if shape == "none":
+            self.accent_strength = 0.0
+            return
+
+        self.accent_strength *= decay
+        self.accent_strength = max(0.0, min(1.0, self.accent_strength))
