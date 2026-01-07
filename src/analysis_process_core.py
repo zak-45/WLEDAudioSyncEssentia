@@ -13,6 +13,7 @@ from src.smoothing import GenreSmoother
 from src.mood_color_mapper import MoodColorMapper
 from src.adaptive_buffer import AdaptiveBuffer
 from src.utils import compute_color
+from src.genre_color_profile_loader import load_genre_color_profiles
 
 # fetch all models from folder
 models = discover_models("models")
@@ -77,6 +78,10 @@ class AnalysisCore:
         self.buffer = np.zeros(0, dtype=np.float32)
         self.last_analysis_time = 0.0
 
+        self.genre_profiles, self.default_profile = load_genre_color_profiles(
+            "config/genre_color_profiles.json"
+        )
+
     # -----------------------------------------------------
 
     def run(self):
@@ -133,9 +138,12 @@ class AnalysisCore:
                 silent=False
             )
 
+            profile = self.genre_profiles.get(macro, self.default_profile)
+
             if self.debug:
-                print("GENRE TOP5:",
+                print("GENRE TOP5: ",
                       " | ".join(f"{g}:{v:.5f}" for g, v in top5))
+                print("GENRE CONF: ", top_conf)
 
             # --------------------------------------------------
             # OSC genre labels
@@ -148,6 +156,11 @@ class AnalysisCore:
             # --------------------------------------------------
             if self.use_macro:
                 macro_probs = collapse_to_macro(probs, self.clf.labels, agg=self.macro_agg)
+
+                total = sum(macro_probs.values())
+                if total > 0:
+                    for k in macro_probs:
+                        macro_probs[k] /= total
 
                 # top-5 macro genres
                 top5_macro = sorted(
@@ -165,8 +178,10 @@ class AnalysisCore:
                 )
 
                 if self.debug:
-                    print("MACRO TOP5:",
+                    print("MACRO TOP5: ",
                           " | ".join(f"{g}:{v:.5f}" for g, v in top5_macro))
+
+                    print("MACRO CONF: ", top_conf_macro)
 
                 # --------------------------------------------------
                 # OSC macro genre labels
@@ -211,14 +226,27 @@ class AnalysisCore:
                 confidence=top_conf
             )
 
+            energy = np.clip(
+                energy + profile.energy_boost * top_conf,
+                0.0,
+                1.0
+            )
+
             mood_hue = self.mood_mapper.mood_to_hue(valence, energy)
 
             # --------------------------------------------------
             # Genre color
             # --------------------------------------------------
-            #
-            genre_brightness = max(0.1, min(1.0, energy))
-            genre_saturation = min(1.0, top_conf * 1.5)
+
+            genre_saturation = max(
+                min(1.0, top_conf * 1.5),
+                profile.sat_floor
+            )
+
+            genre_brightness = max(
+                min(1.0, energy),
+                profile.bright_floor
+            )
 
             r, g, b = compute_color(genre_hue, genre_saturation, genre_brightness)
 
@@ -245,10 +273,11 @@ class AnalysisCore:
             # --------------------------------------------------
             # Final hue + colors
             # --------------------------------------------------
+
             final_hue = self.mood_mapper.fuse_hues(
-                genre_hue=genre_hue,
+                genre_hue=profile.hue,
                 mood_hue=mood_hue,
-                confidence=top_conf
+                confidence=top_conf * profile.mood_hue_weight
             )
 
             # Authoritative production color
@@ -278,6 +307,15 @@ class AnalysisCore:
                     and self.last_beat_time <= segment_end
             )
 
+            if beat_in_window:
+                self.accent_strength = max(
+                    self.accent_strength,
+                    1.0 * profile.accent_gain
+                )
+
+            self.accent_strength *= profile.flash_decay
+            self.accent_strength = max(0.0, self.accent_strength)
+
             # analysis tick
             self.update_accent_strength(
                 beat=beat_in_window,
@@ -285,7 +323,7 @@ class AnalysisCore:
                 genre=macro
             )
 
-            self.accent_strength = max(0.0, self.accent_strength)
+            #self.accent_strength = max(0.0, self.accent_strength)
 
             # always apply flash if there's any remaining strength
             if self.accent_strength > 0.01:
@@ -300,6 +338,7 @@ class AnalysisCore:
                 genre_brightness = max(0.1, min(1.0, energy))
                 genre_saturation = min(1.0, top_conf * 1.5)
                 r, g, b = compute_color(final_hue, genre_saturation, genre_brightness)
+
 
             # --------------------------------------------------
             # OSC output
