@@ -5,7 +5,6 @@ import time
 import numpy as np
 
 from src.effnet_classifier import EffnetClassifier, AuxClassifier
-from src.genre_hues import GENRE_HUES
 from config.genre_flash_shape import GENRE_FLASH_SHAPES
 from src.macro_genres import collapse_to_macro
 from src.model_loader import discover_models
@@ -130,15 +129,15 @@ class AnalysisCore:
 
             top_label, top_conf = top5[0]
             macro = top_label.split("---")[0]
-            genre_hue = GENRE_HUES.get(macro, 270)
 
             self.adaptive.update(
                 top_label=top_label,
-                confidence=top_conf,
+                confidence=macro,
                 silent=False
             )
 
             profile = self.genre_profiles.get(macro, self.default_profile)
+            genre_hue = profile.hue
 
             if self.debug:
                 print("GENRE TOP5: ",
