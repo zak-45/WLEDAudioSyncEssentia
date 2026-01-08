@@ -111,6 +111,7 @@ jobs:
             models=models
             assets=assets
             config=config
+            docs=docs
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
