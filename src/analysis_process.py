@@ -46,6 +46,7 @@ def run_analysis_process(
         debug=debug,
         aux=aux,
         last_beat_time=last_beat_time,
+        activate_buffer=cfg.ACTIVATE_BUFFER
     )
 
     print("🧠 Analysis process ready")

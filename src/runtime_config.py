@@ -27,6 +27,10 @@ class RuntimeConfig:
         return self.cfg["audio"]["min_rms"]
 
     @property
+    def REF_RMS(self):
+        return self.cfg["audio"]["ref_rms"]
+
+    @property
     def SILENCE_TIMEOUT(self):
         return self.cfg["audio"]["silence_timeout"]
 
@@ -63,6 +67,11 @@ class RuntimeConfig:
     @property
     def STABILITY_FRAMES(self):
         return self.cfg["buffer"]["stability_frames"]
+
+    @property
+    def ACTIVATE_BUFFER(self):
+        return self.cfg["buffer"]["activate"]
+
 
     # --- Smoothing ---
     @property

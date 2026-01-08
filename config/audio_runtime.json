@@ -4,7 +4,8 @@
     "model_rate": 16000,
     "channels_default": 2,
     "min_rms": 0.002,
-    "device_index": 0,
+    "ref_rms": 0.05,
+    "device_index": 2,
     "silence_timeout": 0.75
   },
 
@@ -18,7 +19,9 @@
     "shrink_rate": 2.0,
 
     "confidence_threshold": 0.25,
-    "stability_frames": 3
+    "stability_frames": 3,
+
+    "activate": false
   },
 
   "smoothing": {

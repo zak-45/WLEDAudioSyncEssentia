@@ -2,6 +2,8 @@
 import json
 import queue
 import time
+from collections import deque
+
 import numpy as np
 
 from src.effnet_classifier import EffnetClassifier, AuxClassifier
@@ -18,6 +20,7 @@ from src.genre_color_profile_loader import load_genre_color_profiles
 models = discover_models("models")
 #
 DEFAULT_FLASH_SHAPE = "pulse"
+#
 
 class AnalysisCore:
     def __init__(
@@ -32,7 +35,9 @@ class AnalysisCore:
         debug,
         aux,
         last_beat_time,
+        activate_buffer,
     ):
+        self._motion_hist = deque(maxlen=60)
         self.accent_strength = 0.0
         self.aux = aux
         self.danceability = 0.5
@@ -48,6 +53,7 @@ class AnalysisCore:
         self.macro_agg = macro_agg
         self.is_silent = False
         self.last_beat_time = last_beat_time
+        self.activate_buffer = activate_buffer
 
         # -------- MODELS (SAFE HERE) --------
         self.clf = EffnetClassifier()
@@ -81,6 +87,9 @@ class AnalysisCore:
             "config/genre_color_profiles.json"
         )
 
+        self.prev_segment = None
+        self.activity_smooth = 0.0
+
     # -----------------------------------------------------
 
     def run(self):
@@ -111,11 +120,23 @@ class AnalysisCore:
             # --------------------------------------------------
             self.buffer = np.concatenate([self.buffer, audio])
 
-            needed = int(self.cfg.MODEL_SAMPLE_RATE * self.adaptive.current)
+            if self.activate_buffer:
+                needed = int(self.cfg.MODEL_SAMPLE_RATE * self.adaptive.current)
+            else:
+                needed = int(self.cfg.MODEL_SAMPLE_RATE * self.cfg.MIN_BUFFER_SECONDS)
+
             if len(self.buffer) < needed:
+                # print(len(self.buffer), needed, self.cfg.MIN_BUFFER_SECONDS)
                 continue
 
             segment = self.buffer[-needed:]
+            # print(segment.shape)
+
+            # --------------------------------------------------
+            # Activity computation (ENERGY FIX – FINAL)
+            # --------------------------------------------------
+
+            activity_energy = self.compute_activity_energy(segment)
 
             # --------------------------------------------------
             # Genre classification
@@ -128,15 +149,17 @@ class AnalysisCore:
             top5 = self.smooth.top_n(5)
 
             top_label, top_conf = top5[0]
-            macro = top_label.split("---")[0]
+            macro_label = top_label.split("---")[0]
 
-            self.adaptive.update(
-                top_label=top_label,
-                confidence=macro,
-                silent=False
-            )
+            # adapt buffer size if not use macro genre
+            if not self.use_macro and self.activate_buffer:
+                self.adaptive.update(
+                    top_label=top_label,
+                    confidence=top_conf,
+                    silent=False
+                )
 
-            profile = self.genre_profiles.get(macro, self.default_profile)
+            profile = self.genre_profiles.get(macro_label, self.default_profile)
             genre_hue = profile.hue
 
             if self.debug:
@@ -170,11 +193,13 @@ class AnalysisCore:
 
                 top_label_macro, top_conf_macro = top5_macro[0]
 
-                self.adaptive.update(
-                    top_label=top_label_macro,
-                    confidence=top_conf_macro,
-                    silent=False
-                )
+                # update buffer size
+                if self.activate_buffer:
+                    self.adaptive.update(
+                        top_label=top_label_macro,
+                        confidence=top_conf_macro,
+                        silent=False
+                    )
 
                 if self.debug:
                     print("MACRO TOP5: ",
@@ -218,20 +243,20 @@ class AnalysisCore:
             # --------------------------------------------------
             valence = self.mood_mapper.compute_valence(top5)
 
-            energy = self.mood_mapper.compute_energy(
-                danceability=self.danceability,
-                rms_rt=rms_rt,
-                top_genre=macro,
-                confidence=top_conf
+            valence_intensity = abs(valence)
+
+            emotion_base = (
+                    0.6 * valence_intensity +
+                    0.4 * activity_energy
             )
 
-            energy = np.clip(
-                energy + profile.energy_boost * top_conf,
-                0.0,
-                1.0
-            )
+            emotional_energy = emotion_base * (0.85 + 0.15 * top_conf)
 
-            mood_hue = self.mood_mapper.mood_to_hue(valence, energy)
+            emotional_energy = float(np.clip(emotional_energy, 0.0, 1.0))
+
+
+
+            mood_hue = self.mood_mapper.mood_to_hue(valence, emotional_energy)
 
             # --------------------------------------------------
             # Genre color
@@ -243,7 +268,7 @@ class AnalysisCore:
             )
 
             genre_brightness = max(
-                min(1.0, energy),
+                min(1.0, emotional_energy),
                 profile.bright_floor
             )
 
@@ -284,16 +309,23 @@ class AnalysisCore:
                 genre_hue=genre_hue,
                 mood_hue=mood_hue,
                 confidence=top_conf,
-                energy=energy
+                energy=emotional_energy
             )
 
             if self.debug:
                 print("Final color:", r, g, b)
 
+            # Debug / genre-centric override
+            if self.color1:
+                genre_brightness = max(0.1, min(1.0, activity_energy))
+                genre_saturation = min(1.0, top_conf * 1.5)
+                r, g, b = compute_color(final_hue, genre_saturation, genre_brightness)
+                print('Debug final :', r, g, b)
+
             # Accent color
             accent_r, accent_g, accent_b = self.mood_mapper.accent_color(
                 final_hue=final_hue,
-                energy=energy,
+                energy=activity_energy,
                 confidence=top_conf
             )
 
@@ -306,23 +338,16 @@ class AnalysisCore:
                     and self.last_beat_time <= segment_end
             )
 
-            if beat_in_window:
-                self.accent_strength = max(
-                    self.accent_strength,
-                    1.0 * profile.accent_gain
-                )
-
-            self.accent_strength *= profile.flash_decay
-            self.accent_strength = max(0.0, self.accent_strength)
-
-            # analysis tick
+            # Update accent strength once
             self.update_accent_strength(
                 beat=beat_in_window,
-                energy=energy,
-                genre=macro
+                energy=activity_energy,
+                genre=macro_label
             )
 
-            #self.accent_strength = max(0.0, self.accent_strength)
+            # Apply artistic gain
+            self.accent_strength *= profile.accent_gain
+            self.accent_strength = min(1.0, self.accent_strength)
 
             # always apply flash if there's any remaining strength
             if self.accent_strength > 0.01:
@@ -331,13 +356,8 @@ class AnalysisCore:
                     flash_strength=self.accent_strength
                 )
 
-
-            # Debug / genre-centric override
-            if self.color1:
-                genre_brightness = max(0.1, min(1.0, energy))
-                genre_saturation = min(1.0, top_conf * 1.5)
-                r, g, b = compute_color(final_hue, genre_saturation, genre_brightness)
-
+            if self.debug:
+                print("Accent color:", accent_r, accent_g, accent_b)
 
             # --------------------------------------------------
             # OSC output
@@ -354,24 +374,35 @@ class AnalysisCore:
                 "/WASEssentia/mood/data",
                 json.dumps({
                     "valence": round(valence, 3),
-                    "energy": round(energy, 3),
+                    "activity_energy": round(activity_energy, 3),
+                    "emotion_energy": round(emotional_energy, 3),
                     "R": r,
                     "G": g,
                     "B": b
                 })
             )
 
+            mood_data = json.dumps({
+                    "valence": round(valence, 3),
+                    "activity_energy": round(activity_energy, 3),
+                    "emotion_energy": round(emotional_energy, 3),
+                    "R": r,
+                    "G": g,
+                    "B": b
+                })
+            print(mood_data)
+
             # --------------------------------------------------
             # Visual debug
             # --------------------------------------------------
             if self.visual:
                 self.visual.update(
-                    genre=macro,
+                    genre=macro_label,
                     genre_hue=genre_hue,
                     mood_hue=mood_hue,
                     final_hue=final_hue,
                     valence=valence,
-                    energy=energy,
+                    energy=activity_energy,
                     rgb=(r, g, b),
                     rgb_accent=(accent_r, accent_g, accent_b)
                 )
@@ -466,3 +497,56 @@ class AnalysisCore:
 
         self.accent_strength *= decay
         self.accent_strength = max(0.0, min(1.0, self.accent_strength))
+
+
+    def compute_activity_energy(self, segment):
+        # ---- RMS (for gating only) ----
+        rms = np.sqrt(np.mean(segment ** 2))
+        if rms < self.cfg.MIN_RMS:
+            return 0.0
+
+        # ---- Temporal motion (first derivative) ----
+        diff = np.diff(segment)
+        motion = np.sqrt(np.mean(diff ** 2))
+
+        # ---- Normalize motion perceptually ----
+        if not hasattr(self, "_motion_hist"):
+            self._motion_hist = deque(maxlen=60)
+
+        self._motion_hist.append(motion)
+
+        motion_ref = np.percentile(self._motion_hist, 90) + 1e-6
+        motion_norm = np.clip(motion / motion_ref, 0.0, 1.0)
+
+        # ---- Transient density ----
+        env = np.abs(segment)
+        env_diff = np.diff(env)
+        transient = np.sqrt(np.mean(env_diff ** 2))
+
+        transient_norm = np.clip(
+            transient / (motion_ref * 1.5),
+            0.0,
+            1.0
+        )
+
+        # ---- Fuse (motion dominant) ----
+        raw_activity = (
+                0.75 * motion_norm +
+                0.25 * transient_norm
+        )
+
+        # ---- Temporal smoothing (CRITICAL) ----
+        self.activity_smooth = (
+            0.85 * self.activity_smooth +
+            0.15 * raw_activity
+        )
+
+        print(
+            f"rms={rms:.4f} "
+            f"motion={motion:.6f} "
+            f"motion_ref={motion_ref:.6f} "
+            f"raw={raw_activity:.3f} "
+            f"smooth={self.activity_smooth:.3f}"
+        )
+
+        return float(np.clip(self.activity_smooth, 0.0, 1.0))
