@@ -261,6 +261,22 @@ class AnalysisCore:
 
             emotional_energy = float(np.clip(emotional_energy, 0.0, 1.0))
 
+            # brightness & saturation
+
+            brightness = (
+                    profile.bright_floor +
+                    emotional_energy * (1.0 - profile.bright_floor)
+            )
+
+            saturation = (
+                    profile.sat_floor +
+                    activity_energy * (1.0 - profile.sat_floor)
+            )
+
+            brightness = float(np.clip(brightness, 0.0, 1.0))
+            saturation = float(np.clip(saturation, 0.0, 1.0))
+
+
             # --------------------------------------------------
             # Mood color
             # --------------------------------------------------
@@ -271,20 +287,7 @@ class AnalysisCore:
             # Genre color
             # --------------------------------------------------
 
-            genre_brightness = (
-                    profile.bright_floor +
-                    emotional_energy * (1.0 - profile.bright_floor)
-            )
-
-            genre_saturation = (
-                    profile.sat_floor +
-                    activity_energy * (1.0 - profile.sat_floor)
-            )
-
-            genre_brightness = float(np.clip(genre_brightness, 0.0, 1.0))
-            genre_saturation = float(np.clip(genre_saturation, 0.0, 1.0))
-
-            r, g, b = compute_color(genre_hue, genre_saturation, genre_brightness)
+            r, g, b = compute_color(genre_hue, saturation, brightness)
 
             if self.debug:
                 print("Genre color:", r, g, b)
@@ -297,7 +300,7 @@ class AnalysisCore:
             # Mood color genre-centric override
             # --------------------------------------------------
             #
-            r, g, b = compute_color(mood_hue, genre_saturation, genre_brightness)
+            r, g, b = compute_color(mood_hue, saturation, brightness)
 
             if self.debug:
                 print("Mood color:", r, g, b)
@@ -330,9 +333,9 @@ class AnalysisCore:
 
             # Debug / genre-centric override
             if self.color1:
-                genre_brightness = max(0.1, min(1.0, activity_energy))
-                genre_saturation = min(1.0, top_conf * 1.5)
-                r, g, b = compute_color(final_hue, genre_saturation, genre_brightness)
+                brightness = max(0.1, min(1.0, activity_energy))
+                saturation = min(1.0, top_conf * 1.5)
+                r, g, b = compute_color(final_hue, saturation, brightness)
                 print('Debug final :', r, g, b)
 
             # Accent color
