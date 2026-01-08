@@ -159,8 +159,16 @@ class AnalysisCore:
                     silent=False
                 )
 
+            # load genre profile params from JSON
             profile = self.genre_profiles.get(macro_label, self.default_profile)
+
+            #color
             genre_hue = profile.hue
+            #energy boost
+            activity_energy = np.clip(
+                activity_energy * profile.energy_boost,
+                0.0, 1.0
+            )
 
             if self.debug:
                 print("GENRE TOP5: ",
