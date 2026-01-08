@@ -313,7 +313,8 @@ class AnalysisCore:
                 genre_hue=genre_hue,
                 mood_hue=mood_hue,
                 confidence=top_conf,
-                energy=emotional_energy
+                activity_energy=activity_energy,
+                emotional_energy=emotional_energy
             )
 
             if self.debug:
@@ -329,7 +330,7 @@ class AnalysisCore:
             # Accent color
             accent_r, accent_g, accent_b = self.mood_mapper.accent_color(
                 final_hue=final_hue,
-                energy=activity_energy,
+                activity_energy=activity_energy,
                 confidence=top_conf
             )
 
