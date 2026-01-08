@@ -243,18 +243,19 @@ class AnalysisCore:
             # --------------------------------------------------
             valence = self.mood_mapper.compute_valence(top5)
 
-            valence_intensity = abs(valence)
+            emotional_weight = abs(valence - 0.5) * 2.0
 
-            emotion_base = (
-                    0.6 * valence_intensity +
-                    0.4 * activity_energy
+            emotional_energy = (
+                    0.5 * emotional_weight +  # emotional intensity
+                    0.3 * activity_energy +  # physical support
+                    0.2 * top_conf  # certainty
             )
-
-            emotional_energy = emotion_base * (0.85 + 0.15 * top_conf)
 
             emotional_energy = float(np.clip(emotional_energy, 0.0, 1.0))
 
-
+            # --------------------------------------------------
+            # Mood color
+            # --------------------------------------------------
 
             mood_hue = self.mood_mapper.mood_to_hue(valence, emotional_energy)
 
@@ -262,15 +263,18 @@ class AnalysisCore:
             # Genre color
             # --------------------------------------------------
 
-            genre_saturation = max(
-                min(1.0, top_conf * 1.5),
-                profile.sat_floor
+            genre_brightness = (
+                    profile.bright_floor +
+                    emotional_energy * (1.0 - profile.bright_floor)
             )
 
-            genre_brightness = max(
-                min(1.0, emotional_energy),
-                profile.bright_floor
+            genre_saturation = (
+                    profile.sat_floor +
+                    activity_energy * (1.0 - profile.sat_floor)
             )
+
+            genre_brightness = float(np.clip(genre_brightness, 0.0, 1.0))
+            genre_saturation = float(np.clip(genre_saturation, 0.0, 1.0))
 
             r, g, b = compute_color(genre_hue, genre_saturation, genre_brightness)
 
@@ -375,7 +379,7 @@ class AnalysisCore:
                 json.dumps({
                     "valence": round(valence, 3),
                     "activity_energy": round(activity_energy, 3),
-                    "emotion_energy": round(emotional_energy, 3),
+                    "emotional_energy": round(emotional_energy, 3),
                     "R": r,
                     "G": g,
                     "B": b
@@ -385,12 +389,14 @@ class AnalysisCore:
             mood_data = json.dumps({
                     "valence": round(valence, 3),
                     "activity_energy": round(activity_energy, 3),
-                    "emotion_energy": round(emotional_energy, 3),
+                    "emotional_energy": round(emotional_energy, 3),
                     "R": r,
                     "G": g,
                     "B": b
                 })
-            print(mood_data)
+
+            if self.debug:
+                print(mood_data)
 
             # --------------------------------------------------
             # Visual debug
@@ -541,12 +547,13 @@ class AnalysisCore:
             0.15 * raw_activity
         )
 
-        print(
-            f"rms={rms:.4f} "
-            f"motion={motion:.6f} "
-            f"motion_ref={motion_ref:.6f} "
-            f"raw={raw_activity:.3f} "
-            f"smooth={self.activity_smooth:.3f}"
-        )
+        if self.debug:
+            print(
+                f"rms={rms:.4f} "
+                f"motion={motion:.6f} "
+                f"motion_ref={motion_ref:.6f} "
+                f"raw={raw_activity:.3f} "
+                f"smooth={self.activity_smooth:.3f}"
+            )
 
         return float(np.clip(self.activity_smooth, 0.0, 1.0))
