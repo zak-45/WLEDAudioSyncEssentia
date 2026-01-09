@@ -159,6 +159,8 @@ class AnalysisCore:
             # --------------------------------------------------
             probs = self.clf.classify(segment)
             if probs is None:
+                if self.debug:
+                    print('Prob is None')
                 continue
 
             self.smooth.update(probs)
@@ -623,22 +625,25 @@ class AnalysisCore:
         return float(self._activity_energy)
 
     def compute_adaptive_motion_floor(self, env_motion):
-        # collect history
         self.motion_history.append(env_motion)
 
         if len(self.motion_history) < 20:
-            # bootstrap: fallback fixed floor
-            return 0.0010
+            return 0.08 * self.cfg.MOTION_REF  # bootstrap tied to ref
 
         hist = np.array(self.motion_history)
 
-        # estimate noise floor from quiet moments
         noise_motion = np.percentile(hist, 20)
 
-        # adaptive floor with safety margin
-        floor = noise_motion * 1.8
+        adaptive_floor = noise_motion * 1.8
 
-        # hard safety clamps
-        floor = np.clip(floor, 0.0005, 0.0030)
+        # anchor to MOTION_REF (your idea)
+        ref_floor = 0.08 * self.cfg.MOTION_REF
+
+        # combine: adaptive, but sane
+        floor = np.clip(
+            adaptive_floor,
+            0.5 * ref_floor,
+            1.5 * ref_floor
+        )
 
         return floor
