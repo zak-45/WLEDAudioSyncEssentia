@@ -77,3 +77,9 @@ class RuntimeConfig:
     @property
     def SMOOTHING_ALPHA(self):
         return self.cfg["smoothing"]["alpha"]
+
+
+    # --- Activity Energy ---
+    @property
+    def MOTION_REF(self):
+        return self.cfg["activity_energy"]["motion_ref"]

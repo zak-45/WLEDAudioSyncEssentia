@@ -24,6 +24,10 @@
     "activate": false
   },
 
+  "activity_energy": {
+    "motion_ref": 0.01500
+  },
+
   "smoothing": {
     "alpha": 0.4
   }

@@ -37,6 +37,8 @@ class AnalysisCore:
         last_beat_time,
         activate_buffer,
     ):
+        self.motion_history = deque(maxlen=120)
+        self._activity_energy = 0.0
         self._motion_hist = deque(maxlen=60)
         self.accent_strength = 0.0
         self.aux = aux
@@ -82,6 +84,7 @@ class AnalysisCore:
 
         self.buffer = np.zeros(0, dtype=np.float32)
         self.last_analysis_time = 0.0
+        self.fast_buffer = np.zeros(0, dtype=np.float32)
 
         self.genre_profiles, self.default_profile = load_genre_color_profiles(
             "config/genre_color_profiles.json"
@@ -116,8 +119,26 @@ class AnalysisCore:
                     self._exit_silence()
 
             # --------------------------------------------------
-            # Buffering
+            # FAST BUFFER (activity_energy)
             # --------------------------------------------------
+
+            self.fast_buffer = np.concatenate([self.fast_buffer, audio])
+
+            fast_needed = int(self.cfg.MODEL_SAMPLE_RATE * self.cfg.MIN_BUFFER_SECONDS)
+
+            if len(self.fast_buffer) < fast_needed:
+                continue
+
+            fast_segment = self.fast_buffer[-fast_needed:]
+            activity_energy = float(self.compute_activity_energy(fast_segment))
+
+            # keep fast buffer tight
+            self.fast_buffer = self.fast_buffer[-fast_needed:]
+
+            # --------------------------------------------------
+            # ADAPTIVE GENRE BUFFER
+            # --------------------------------------------------
+
             self.buffer = np.concatenate([self.buffer, audio])
 
             if self.activate_buffer:
@@ -125,18 +146,13 @@ class AnalysisCore:
             else:
                 needed = int(self.cfg.MODEL_SAMPLE_RATE * self.cfg.MIN_BUFFER_SECONDS)
 
+            max_samples = int(self.cfg.MAX_BUFFER_SECONDS * self.cfg.MODEL_SAMPLE_RATE)
+            self.buffer = self.buffer[-max_samples:]
+
             if len(self.buffer) < needed:
-                # print(len(self.buffer), needed, self.cfg.MIN_BUFFER_SECONDS)
                 continue
 
             segment = self.buffer[-needed:]
-            # print(segment.shape)
-
-            # --------------------------------------------------
-            # Activity computation (ENERGY FIX – FINAL)
-            # --------------------------------------------------
-
-            activity_energy = self.compute_activity_energy(segment)
 
             # --------------------------------------------------
             # Genre classification
@@ -164,6 +180,7 @@ class AnalysisCore:
 
             #color
             genre_hue = profile.hue
+
             #energy boost
             activity_energy = np.clip(
                 activity_energy * profile.energy_boost,
@@ -436,6 +453,7 @@ class AnalysisCore:
     def _enter_silence(self):
         self.is_silent = True
         self.buffer = np.zeros(0, dtype=np.float32)
+        self.fast_buffer = np.zeros(0, dtype=np.float32)
         self.smooth.reset()
         self.adaptive.reset()
         self.adaptive.current = self.cfg.MIN_BUFFER_SECONDS
@@ -517,55 +535,110 @@ class AnalysisCore:
         self.accent_strength = max(0.0, min(1.0, self.accent_strength))
 
 
-    def compute_activity_energy(self, segment):
-        # ---- RMS (for gating only) ----
-        rms = np.sqrt(np.mean(segment ** 2))
-        if rms < self.cfg.MIN_RMS:
+
+    def compute_activity_energy(self, segment: np.ndarray) -> float:
+        """
+        Activity energy from FAST buffer.
+        Depends on BOTH loudness and envelope motion.
+        Returns [0.0, 1.0]
+        """
+
+        sr = self.cfg.MODEL_SAMPLE_RATE
+
+        # --------------------------------------------------
+        # 1. Short-term RMS envelope
+        # --------------------------------------------------
+        frame = int(0.02 * sr)  # 20 ms
+        hop = int(0.01 * sr)  # 10 ms
+
+        if len(segment) < frame * 3:
             return 0.0
 
-        # ---- Temporal motion (first derivative) ----
-        diff = np.diff(segment)
-        motion = np.sqrt(np.mean(diff ** 2))
+        frames = np.lib.stride_tricks.sliding_window_view(
+            segment, frame
+        )[::hop]
 
-        # ---- Normalize motion perceptually ----
-        if not hasattr(self, "_motion_hist"):
-            self._motion_hist = deque(maxlen=60)
+        env = np.sqrt(np.mean(frames ** 2, axis=1))
 
-        self._motion_hist.append(motion)
+        rms = float(np.mean(env))
+        if rms < self.cfg.MIN_RMS:
+            self._activity_energy = 0.0
+            return 0.0
 
-        motion_ref = np.percentile(self._motion_hist, 90) + 1e-6
-        motion_norm = np.clip(motion / motion_ref, 0.0, 1.0)
+        # --------------------------------------------------
+        # 2. Envelope motion (FAST)
+        # --------------------------------------------------
+        motion = np.abs(np.diff(env))
+        env_motion = float(np.mean(motion))
 
-        # ---- Transient density ----
-        env = np.abs(segment)
-        env_diff = np.diff(env)
-        transient = np.sqrt(np.mean(env_diff ** 2))
+        # --------------------------------------------------
+        # 3. Normalize loudness (FIXED SCALE)
+        # --------------------------------------------------
+        RMS_FLOOR = self.cfg.MIN_RMS  # e.g. 0.002
+        RMS_REF = self.cfg.REF_RMS  # e.g. 0.05
 
-        transient_norm = np.clip(
-            transient / (motion_ref * 1.5),
-            0.0,
-            1.0
-        )
+        rms_norm = (rms - RMS_FLOOR) / (RMS_REF - RMS_FLOOR)
+        rms_norm = np.clip(rms_norm, 0.0, 1.0)
 
-        # ---- Fuse (motion dominant) ----
-        raw_activity = (
-                0.75 * motion_norm +
-                0.25 * transient_norm
-        )
+        # --------------------------------------------------
+        # 4. Normalize motion (FIXED SCALE)
+        # --------------------------------------------------
+        MOTION_REF = self.cfg.MOTION_REF
+        # MOTION_FLOOR = 0.0010
+        MOTION_FLOOR = self.compute_adaptive_motion_floor(env_motion)
 
-        # ---- Temporal smoothing (CRITICAL) ----
-        self.activity_smooth = (
-            0.85 * self.activity_smooth +
-            0.15 * raw_activity
-        )
+        motion_norm = max(0.0, env_motion - MOTION_FLOOR)
+        motion_norm = motion_norm / MOTION_REF
+        motion_norm = np.clip(motion_norm, 0.0, 1.0)
 
-        if self.debug:
-            print(
-                f"rms={rms:.4f} "
-                f"motion={motion:.6f} "
-                f"motion_ref={motion_ref:.6f} "
-                f"raw={raw_activity:.3f} "
-                f"smooth={self.activity_smooth:.3f}"
+        # --------------------------------------------------
+        # 5. Activity = loud AND moving
+        # --------------------------------------------------
+        raw_activity = rms_norm * motion_norm
+
+        # --------------------------------------------------
+        # 6. Temporal smoothing (no accumulation!)
+        # --------------------------------------------------
+        if not hasattr(self, "_activity_energy"):
+            self._activity_energy = raw_activity
+        else:
+            alpha = self.cfg.SMOOTHING_ALPHA
+            self._activity_energy = (
+                    alpha * raw_activity +
+                    (1.0 - alpha) * self._activity_energy
             )
 
-        return float(np.clip(self.activity_smooth, 0.0, 1.0))
+        # --------------------------------------------------
+        # 7. Debug
+        # --------------------------------------------------
+        if getattr(self, "debug", False):
+            print(
+                f"activity | rms={rms:.4f} "
+                f"rms_n={rms_norm:.3f} "
+                f"motion={env_motion:.6f} "
+                f"motion_n={motion_norm:.3f} "
+                f"activity={self._activity_energy:.3f}"
+            )
+
+        return float(self._activity_energy)
+
+    def compute_adaptive_motion_floor(self, env_motion):
+        # collect history
+        self.motion_history.append(env_motion)
+
+        if len(self.motion_history) < 20:
+            # bootstrap: fallback fixed floor
+            return 0.0010
+
+        hist = np.array(self.motion_history)
+
+        # estimate noise floor from quiet moments
+        noise_motion = np.percentile(hist, 20)
+
+        # adaptive floor with safety margin
+        floor = noise_motion * 1.8
+
+        # hard safety clamps
+        floor = np.clip(floor, 0.0005, 0.0030)
+
+        return floor
