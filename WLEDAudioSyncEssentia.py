@@ -88,7 +88,7 @@ def on_audio(audio, rms_rt):
         is_silent = False
 
         # beat detector, dB
-        beat, level = aubio_beat_detector.process(audio)
+        beat, level, bpm = aubio_beat_detector.process(audio)
         now = time.time()
 
         # resample to model rate
@@ -96,10 +96,19 @@ def on_audio(audio, rms_rt):
         activity_energy = rtp.run(audio)
 
         if beat and (now - last_beat_time) > BEAT_HOLD:
+
             last_beat_time = now
+            # Anti demi-tempo
+            if bpm < 100:
+                bpm = bpm * 2
+
             spinner_char = spinner.get_char()
-            sys.stdout.write(f"Beat detected {spinner_char} dB: {level:.2f}  activity_energy: {activity_energy:.2f}\r")
+            sys.stdout.write(f"Beat detected {spinner_char} "
+                             f"bpm: {bpm:.2f}  "
+                             f"dB: {level:.2f}  "
+                             f"activity_energy: {activity_energy:.2f}\r")
             osc.send('/WASEssentia/audio/beat', spinner_char)
+            osc.send('/WASEssentia/audio/bpm', bpm)
             osc.send('/WASEssentia/audio/dB', level)
             osc.send('/WASEssentia/audio/activity_energy', activity_energy)
 
