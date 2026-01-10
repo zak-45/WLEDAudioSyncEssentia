@@ -83,3 +83,8 @@ class RuntimeConfig:
     @property
     def MOTION_REF(self):
         return self.cfg["activity_energy"]["motion_ref"]
+
+    # --- BPM ---
+    @property
+    def DOUBLING_THRESHOLD(self):
+        return self.cfg["bpm"]["doubling_threshold"]

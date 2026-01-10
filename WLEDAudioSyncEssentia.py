@@ -89,7 +89,6 @@ def on_audio(audio, rms_rt):
 
         # beat detector, dB
         beat, level, bpm = aubio_beat_detector.process(audio)
-        now = time.time()
 
         # resample to model rate
         audio = resample(audio, AUDIO_DEVICE_RATE, MODEL_SAMPLE_RATE)
@@ -99,7 +98,7 @@ def on_audio(audio, rms_rt):
 
             last_beat_time = now
             # Anti demi-tempo
-            if bpm < 100:
+            if bpm < cfg.DOUBLING_THRESHOLD:
                 bpm = bpm * 2
 
             spinner_char = spinner.get_char()
