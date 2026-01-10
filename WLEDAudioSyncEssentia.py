@@ -16,6 +16,7 @@ from src.audio_stream import AudioStream
 from src.osc_sender import OSCSender
 from src.aubio_beat_detector import AubioBeatDetector
 from src.runtime_config import RuntimeConfig
+from src.rt_process import RealTimeProcess
 
 cfg = RuntimeConfig(root_path("config/audio_runtime.json"))
 
@@ -31,6 +32,10 @@ CHANNELS = cfg.CHANNELS
 last_beat_time = 0.0
 BEAT_HOLD = 0.15  # seconds, prevents double triggers
 
+is_silent = False
+last_non_silent_time = time.time()
+
+
 spinner = BeatPrinter()
 
 def list_devices(p: pyaudio.PyAudio):
@@ -43,8 +48,18 @@ def list_devices(p: pyaudio.PyAudio):
     print("\nUse the index with the --device-index flag to select a device.")
 
 
+def put_on_queue(audio, rms_rt, activity_energy, beat, silent):
+    try:
+        audio_queue.put_nowait((audio, rms_rt, time.time(), activity_energy, beat, silent))
+    except queue.Full:
+        try:
+            audio_queue.get_nowait()  # drop old
+            audio_queue.put_nowait((audio, rms_rt, time.time(), activity_energy, beat, silent))
+        except queue.Empty:
+            pass
+
 def on_audio(audio, rms_rt):
-    global last_beat_time
+    global last_beat_time, is_silent, last_non_silent_time
     # Convert stereo to mono only if the stream has 2 channels
     if CHANNELS == 2:
         # interleaved stereo: [L0, R0, L1, R1, ...]
@@ -52,28 +67,45 @@ def on_audio(audio, rms_rt):
         audio = audio[:frames * 2]          # drop odd sample if any
         audio = audio.reshape(-1, 2).mean(axis=1)
 
-    # beat detector, dB
-    beat, level = aubio_beat_detector.process(audio)
+    # --------------------------------------------------
+    # Silence detection
+    # --------------------------------------------------
     now = time.time()
 
-    if beat and (now - last_beat_time) > BEAT_HOLD:
-        last_beat_time = now
-        spinner_char = spinner.get_char()
-        sys.stdout.write(f"Beat detected {spinner_char} dB: {level:.2f} \r")
-        osc.send('/WASEssentia/audio/beat', spinner_char)
-        osc.send('/WASEssentia/audio/dB', level)
+    if rms_rt < cfg.MIN_RMS:
+        if not is_silent and (now - last_non_silent_time) >= cfg.SILENCE_TIMEOUT:
+            is_silent = True
+            put_on_queue(audio, rms_rt, time.time(), 0, is_silent)
 
-    # resample to model rate
-    audio = resample(audio, AUDIO_DEVICE_RATE, MODEL_SAMPLE_RATE)
+    else:
 
-    try:
-        audio_queue.put_nowait((audio, rms_rt, time.time()))
-    except queue.Full:
-        try:
-            audio_queue.get_nowait()  # drop old
-            audio_queue.put_nowait((audio, rms_rt, time.time()))
-        except queue.Empty:
-            pass
+        if is_silent:
+            osc.send_silence(1)
+            if DEBUG_DATA:
+                print("🎵 AUDIO RESUMED")
+
+        last_non_silent_time = now
+        is_silent = False
+
+        # beat detector, dB
+        beat, level = aubio_beat_detector.process(audio)
+        now = time.time()
+
+        # resample to model rate
+        audio = resample(audio, AUDIO_DEVICE_RATE, MODEL_SAMPLE_RATE)
+        activity_energy = rtp.run(audio)
+
+        if beat and (now - last_beat_time) > BEAT_HOLD:
+            last_beat_time = now
+            spinner_char = spinner.get_char()
+            sys.stdout.write(f"Beat detected {spinner_char} dB: {level:.2f}  activity_energy: {activity_energy:.2f}\r")
+            osc.send('/WASEssentia/audio/beat', spinner_char)
+            osc.send('/WASEssentia/audio/dB', level)
+            osc.send('/WASEssentia/audio/activity_energy', activity_energy)
+
+
+        # put on queue
+        put_on_queue(audio, rms_rt, activity_energy, beat, is_silent)
 
 
 if __name__ == "__main__":
@@ -125,8 +157,8 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--osc-path",
-        default="/genre",
-        help="OSC message path (default: /genre)"
+        default="/WASEssentia/genre",
+        help="OSC message path (default: /WASEssentia/genre)"
     )
 
     parser.add_argument(
@@ -168,6 +200,13 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--show_activity",
+        action="store_true",
+        help="If present, Print activity_energy values"
+    )
+
+
+    parser.add_argument(
         "--color1",
         action="store_true",
         help="Choose color type Genre centric for final hue"
@@ -197,6 +236,7 @@ if __name__ == "__main__":
 
         VISUAL_DEBUG = args.visual
         DEBUG_DATA = args.debug
+        SHOW_ACTIVITY = args.show_activity
 
         USE_MACRO_GENRES = args.macro
         MACRO_AGG = args.macro_agg
@@ -263,6 +303,8 @@ if __name__ == "__main__":
             win_size=1024,
         )
 
+        rtp = RealTimeProcess(cfg, DEBUG_DATA, SHOW_ACTIVITY)
+
         analysis_proc = Process(
             target=run_analysis_process,
             args=(
@@ -277,7 +319,6 @@ if __name__ == "__main__":
                 DEBUG_DATA,
                 VISUAL_DEBUG,
                 AUX,
-                last_beat_time
             ),
             daemon=True
         )

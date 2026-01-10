@@ -2,7 +2,6 @@
 import json
 import queue
 import time
-from collections import deque
 
 import numpy as np
 
@@ -34,12 +33,8 @@ class AnalysisCore:
         color1,
         debug,
         aux,
-        last_beat_time,
         activate_buffer,
     ):
-        self.motion_history = deque(maxlen=120)
-        self._activity_energy = 0.0
-        self._motion_hist = deque(maxlen=60)
         self.accent_strength = 0.0
         self.aux = aux
         self.danceability = 0.5
@@ -54,7 +49,6 @@ class AnalysisCore:
         self.use_macro = use_macro
         self.macro_agg = macro_agg
         self.is_silent = False
-        self.last_beat_time = last_beat_time
         self.activate_buffer = activate_buffer
 
         # -------- MODELS (SAFE HERE) --------
@@ -84,7 +78,6 @@ class AnalysisCore:
 
         self.buffer = np.zeros(0, dtype=np.float32)
         self.last_analysis_time = 0.0
-        self.fast_buffer = np.zeros(0, dtype=np.float32)
 
         self.genre_profiles, self.default_profile = load_genre_color_profiles(
             "config/genre_color_profiles.json"
@@ -100,40 +93,17 @@ class AnalysisCore:
 
         while True:
             try:
-                audio, rms_rt, ts = self.audio_queue.get(timeout=0.1)
+                audio, rms_rt, ts, activity_energy, beat, is_silent = self.audio_queue.get(timeout=0.1)
             except queue.Empty:
                 continue
 
             # --------------------------------------------------
             # Silence detection
             # --------------------------------------------------
-            now = time.time()
-
-            if rms_rt < self.cfg.MIN_RMS:
-                if not self.is_silent and (now - self.last_non_silent_time) >= self.cfg.SILENCE_TIMEOUT:
-                    self._enter_silence()
-                continue
-            else:
-                self.last_non_silent_time = now
-                if self.is_silent:
-                    self._exit_silence()
-
-            # --------------------------------------------------
-            # FAST BUFFER (activity_energy)
-            # --------------------------------------------------
-
-            self.fast_buffer = np.concatenate([self.fast_buffer, audio])
-
-            fast_needed = int(self.cfg.MODEL_SAMPLE_RATE * self.cfg.MIN_BUFFER_SECONDS)
-
-            if len(self.fast_buffer) < fast_needed:
+            if is_silent:
+                self._enter_silence()
                 continue
 
-            fast_segment = self.fast_buffer[-fast_needed:]
-            activity_energy = float(self.compute_activity_energy(fast_segment))
-
-            # keep fast buffer tight
-            self.fast_buffer = self.fast_buffer[-fast_needed:]
 
             # --------------------------------------------------
             # ADAPTIVE GENRE BUFFER
@@ -364,18 +334,9 @@ class AnalysisCore:
                 confidence=top_conf
             )
 
-            # Sync beats with analysis window
-            segment_start = ts - (len(segment) / self.cfg.MODEL_SAMPLE_RATE)
-            segment_end = ts
-
-            beat_in_window = (
-                    self.last_beat_time >= segment_start
-                    and self.last_beat_time <= segment_end
-            )
-
             # Update accent strength once
             self.update_accent_strength(
-                beat=beat_in_window,
+                beat=beat,
                 energy=activity_energy,
                 genre=macro_label
             )
@@ -455,7 +416,6 @@ class AnalysisCore:
     def _enter_silence(self):
         self.is_silent = True
         self.buffer = np.zeros(0, dtype=np.float32)
-        self.fast_buffer = np.zeros(0, dtype=np.float32)
         self.smooth.reset()
         self.adaptive.reset()
         self.adaptive.current = self.cfg.MIN_BUFFER_SECONDS
@@ -463,13 +423,6 @@ class AnalysisCore:
 
         if self.debug:
             print("🔇 SILENCE → analysis reset")
-
-    def _exit_silence(self):
-        self.is_silent = False
-        self.osc.send_silence(1)
-
-        if self.debug:
-            print("🎵 AUDIO RESUMED")
 
     # ==================================================
     def load_aux(self):
@@ -535,115 +488,3 @@ class AnalysisCore:
 
         self.accent_strength *= decay
         self.accent_strength = max(0.0, min(1.0, self.accent_strength))
-
-
-
-    def compute_activity_energy(self, segment: np.ndarray) -> float:
-        """
-        Activity energy from FAST buffer.
-        Depends on BOTH loudness and envelope motion.
-        Returns [0.0, 1.0]
-        """
-
-        sr = self.cfg.MODEL_SAMPLE_RATE
-
-        # --------------------------------------------------
-        # 1. Short-term RMS envelope
-        # --------------------------------------------------
-        frame = int(0.02 * sr)  # 20 ms
-        hop = int(0.01 * sr)  # 10 ms
-
-        if len(segment) < frame * 3:
-            return 0.0
-
-        frames = np.lib.stride_tricks.sliding_window_view(
-            segment, frame
-        )[::hop]
-
-        env = np.sqrt(np.mean(frames ** 2, axis=1))
-
-        rms = float(np.mean(env))
-        if rms < self.cfg.MIN_RMS:
-            self._activity_energy = 0.0
-            return 0.0
-
-        # --------------------------------------------------
-        # 2. Envelope motion (FAST)
-        # --------------------------------------------------
-        motion = np.abs(np.diff(env))
-        env_motion = float(np.mean(motion))
-
-        # --------------------------------------------------
-        # 3. Normalize loudness (FIXED SCALE)
-        # --------------------------------------------------
-        RMS_FLOOR = self.cfg.MIN_RMS  # e.g. 0.002
-        RMS_REF = self.cfg.REF_RMS  # e.g. 0.05
-
-        rms_norm = (rms - RMS_FLOOR) / (RMS_REF - RMS_FLOOR)
-        rms_norm = np.clip(rms_norm, 0.0, 1.0)
-
-        # --------------------------------------------------
-        # 4. Normalize motion (FIXED SCALE)
-        # --------------------------------------------------
-        MOTION_REF = self.cfg.MOTION_REF
-        # MOTION_FLOOR = 0.0010
-        MOTION_FLOOR = self.compute_adaptive_motion_floor(env_motion)
-
-        motion_norm = max(0.0, env_motion - MOTION_FLOOR)
-        motion_norm = motion_norm / MOTION_REF
-        motion_norm = np.clip(motion_norm, 0.0, 1.0)
-
-        # --------------------------------------------------
-        # 5. Activity = loud AND moving
-        # --------------------------------------------------
-        raw_activity = rms_norm * motion_norm
-
-        # --------------------------------------------------
-        # 6. Temporal smoothing (no accumulation!)
-        # --------------------------------------------------
-        if not hasattr(self, "_activity_energy"):
-            self._activity_energy = raw_activity
-        else:
-            alpha = self.cfg.SMOOTHING_ALPHA
-            self._activity_energy = (
-                    alpha * raw_activity +
-                    (1.0 - alpha) * self._activity_energy
-            )
-
-        # --------------------------------------------------
-        # 7. Debug
-        # --------------------------------------------------
-        if getattr(self, "debug", False):
-            print(
-                f"activity | rms={rms:.4f} "
-                f"rms_n={rms_norm:.3f} "
-                f"motion={env_motion:.6f} "
-                f"motion_n={motion_norm:.3f} "
-                f"activity={self._activity_energy:.3f}"
-            )
-
-        return float(self._activity_energy)
-
-    def compute_adaptive_motion_floor(self, env_motion):
-        self.motion_history.append(env_motion)
-
-        if len(self.motion_history) < 20:
-            return 0.08 * self.cfg.MOTION_REF  # bootstrap tied to ref
-
-        hist = np.array(self.motion_history)
-
-        noise_motion = np.percentile(hist, 20)
-
-        adaptive_floor = noise_motion * 1.8
-
-        # anchor to MOTION_REF (your idea)
-        ref_floor = 0.08 * self.cfg.MOTION_REF
-
-        # combine: adaptive, but sane
-        floor = np.clip(
-            adaptive_floor,
-            0.5 * ref_floor,
-            1.5 * ref_floor
-        )
-
-        return floor

@@ -12,7 +12,6 @@ def run_analysis_process(
     debug,
     visual_enabled,
     aux,
-    last_beat_time,
 ):
     """
     Windows-safe multiprocessing entry point.
@@ -45,7 +44,6 @@ def run_analysis_process(
         color1=color1,
         debug=debug,
         aux=aux,
-        last_beat_time=last_beat_time,
         activate_buffer=cfg.ACTIVATE_BUFFER
     )
 
