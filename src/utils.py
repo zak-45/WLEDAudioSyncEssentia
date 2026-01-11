@@ -1,3 +1,11 @@
+"""Small helper utilities for resampling audio and working with HSV colors.
+
+This module wraps high-quality sample rate conversion and basic HSV→RGB
+conversion so other parts of the system can easily adapt audio to the model
+rate and compute LED colors from abstract hue, confidence, and energy values.
+It keeps these low-level operations centralized and implementation-agnostic.
+"""
+
 import soxr
 import numpy as np
 import colorsys

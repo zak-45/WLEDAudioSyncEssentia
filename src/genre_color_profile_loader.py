@@ -1,4 +1,11 @@
 # src/genre_color_profile_loader.py
+"""Loader for genre-specific color profile settings.
+
+This module reads JSON configuration that describes how each music genre should
+map to hue, brightness, saturation, and accent behaviour for the lighting
+system. It returns a lookup of named profiles plus a required DEFAULT profile
+so the analysis core can always fall back to sensible visual parameters.
+"""
 
 import json
 from src.genre_color_profile import GenreColorProfile

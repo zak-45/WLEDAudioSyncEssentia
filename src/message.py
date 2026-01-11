@@ -3,6 +3,11 @@ WLEDAudioSyncEssentia
 ---------------------
 Message module
 for displaying extraction status.
+
+This module builds a styled Rich console message that informs the user where
+the application has been extracted and how to start it. It is shown once at
+startup when running from a bundled executable so users can easily find the
+installed files.
 """
 
 from rich.console import Console
@@ -20,8 +25,6 @@ message.append(f"{install_path}\n\n", style="cyan")
 message.append("➡ Please navigate to this folder and run the application.", style="yellow")
 
 class Msg:
-   def init(self):
-       pass
    @staticmethod
    def message():
        console.print(

@@ -1,7 +1,16 @@
+"""Genre and auxiliary music classifiers built on top of Essentia Effnet models.
+
+This module wraps Discogs-trained EfficientNet TensorFlow graphs to provide
+high-level helpers for turning raw audio or embeddings into genre probabilities
+and additional musical attributes. It is responsible for loading model
+metadata, running inference, and returning well-structured probability maps for
+downstream smoothing, mood estimation, and lighting control.
+"""
+
 import json
 import numpy as np
 from essentia.standard import TensorflowPredictEffnetDiscogs, TensorflowPredict2D
-from src.labels import load_genre_labels
+from src.genre_labels_load import load_genre_labels
 
 class EffnetClassifier:
     def __init__(self):
@@ -11,17 +20,15 @@ class EffnetClassifier:
         )
 
         self.classifier = TensorflowPredict2D(
-            graphFilename=f"models/genre_discogs400-discogs-effnet-1.pb",
+            graphFilename="models/genre_discogs400-discogs-effnet-1.pb",
             input="serving_default_model_Placeholder",
-            output="PartitionedCall:0"
+            output="PartitionedCall:0",
         )
 
         # LOAD LABELS FROM JSON (THIS IS THE KEY FIX)
         self.labels = load_genre_labels(
-            f"models/genre_discogs400-discogs-effnet-1.json"
+            "models/genre_discogs400-discogs-effnet-1.json"
         )
-
-        print("Number of Labels loaded:", len(self.labels))
 
     def classify(self, audio):
         audio = np.asarray(audio, dtype=np.float32)
@@ -37,8 +44,11 @@ class EffnetClassifier:
 
         if len(probs) != len(self.labels):
             print("❌ size mismatch:", len(probs), len(self.labels))
-            return None
-
+            raise ValueError(
+                f"EffnetClassifier output size mismatch: "
+                f"{len(probs)} probabilities for {len(self.labels)} labels. "
+                "This typically indicates a configuration or model/metadata versioning issue."
+            )
         return probs
 
     def compute_embeddings(self, audio):

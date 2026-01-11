@@ -1,10 +1,21 @@
 # src/analysis_process_core.py
+
+"""Core engine for turning live audio into genres, mood, and lighting colors.
+
+This module implements the main analysis loop that consumes audio chunks,
+classifies genres, estimates mood and energy, and drives OSC-controlled
+lighting in real time. It combines neural network models, adaptive buffering,
+and color mapping logic to produce stable yet responsive visual feedback that
+tracks the character of the music.
+"""
+
 import json
 import queue
 import time
 
 import numpy as np
 
+from configmanager import root_path
 from src.effnet_classifier import EffnetClassifier, AuxClassifier
 from src.macro_genres import collapse_to_macro
 from src.model_loader import discover_models
@@ -20,11 +31,11 @@ rt_color_mapper = EmotionColorMapper(
     smoothing=0.85   # recommended for LEDs
 )
 
-with open("config/genre_flash_shape.json", "r") as f:
+with open(root_path("config/genre_flash_shape.json"), "r") as f:
     GENRE_FLASH_SHAPES = json.load(f)
 
 # fetch all models from folder
-models = discover_models("models")
+models = discover_models(root_path("models"))
 #
 
 class AnalysisCore:
@@ -550,7 +561,7 @@ class AnalysisCore:
         self.smooth.reset()
         self.adaptive.reset()
         self.adaptive.current = self.cfg.MIN_BUFFER_SECONDS
-        self.mood_mapper._valence = 0.5
+        self.mood_mapper.reset_valence()
         self.osc.send_silence(0)
 
         if self.debug:

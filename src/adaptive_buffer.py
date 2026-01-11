@@ -1,4 +1,13 @@
 
+"""Adaptive buffering utilities for audio-driven analysis.
+
+This module provides a small helper class that automatically grows or shrinks
+the amount of audio used for analysis based on how stable and confident the
+current predictions are. It is used to balance responsiveness with stability
+so that the system can react quickly to changes while avoiding jitter when the
+input is consistent.
+"""
+
 class AdaptiveBuffer:
     """Dynamically adjusts a buffer size based on label stability and confidence.
     Maintains a bounded buffer length that grows when input is stable and shrinks otherwise.

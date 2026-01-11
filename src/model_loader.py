@@ -1,3 +1,12 @@
+"""Model discovery helpers for Essentia/TensorFlow classifiers.
+
+This module scans a models folder, finds matching TensorFlow graph and JSON
+metadata pairs, and returns a structured description of each available model.
+It distinguishes between the main genre classifier and auxiliary models, so
+the analysis pipeline can automatically load and route predictions from all
+compatible networks without hardcoding file names.
+"""
+
 import os
 import json
 

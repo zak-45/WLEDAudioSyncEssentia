@@ -1,3 +1,11 @@
+"""Non-blocking audio capture using PyAudio.
+
+This module defines a small helper class that opens a live input device,
+reads audio frames in a background callback, and forwards them to the rest of
+the system for analysis. It hides the low-level PyAudio stream management so
+callers can work directly with NumPy arrays and simple callbacks.
+"""
+
 import pyaudio
 import numpy as np
 
@@ -38,6 +46,10 @@ class AudioStream:
 
     def stop(self):
         print("\nStopping audio stream...")
-        self.stream.stop_stream()
-        self.stream.close()
-        self.pa.terminate()
+        if self.stream is not None:
+            self.stream.stop_stream()
+            self.stream.close()
+            self.pa.terminate()
+            self.stream = None
+
+

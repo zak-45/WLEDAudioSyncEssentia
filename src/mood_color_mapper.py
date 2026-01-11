@@ -1,3 +1,12 @@
+"""Mapping of musical mood and energy into perceptually meaningful colors.
+
+This module estimates an evolving valence value from genre probabilities,
+brightness, activity, and confidence, then converts that emotional state into
+stable HSV-based colors for both base and accent lighting. It encapsulates the
+logic for fusing genre priors with real-time dynamics so that LEDs respond in a
+way that feels emotionally coherent with the music rather than purely reactive.
+"""
+
 import json
 import numpy as np
 from collections import defaultdict
@@ -18,7 +27,7 @@ class MoodColorMapper:
     # ==================================================
 
     def __init__(self, genre_json_path, mood_config_path):
-        self._valence = 0.0
+        self._valence = 0.5
         self.valence_weights = self._build_valence_weights(
             genre_json_path,
             mood_config_path
@@ -61,6 +70,10 @@ class MoodColorMapper:
             weights[macro] = macro_weight.get(macro, 0.0)
 
         return dict(weights)
+
+    # ==================================================
+    def reset_valence(self):
+        self._valence = 0.5
 
     # ==================================================
     # VALENCE ESTIMATION

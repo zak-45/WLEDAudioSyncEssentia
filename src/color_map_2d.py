@@ -1,3 +1,12 @@
+"""2D color mapping utilities for valence–arousal style emotion spaces.
+
+This module interpolates RGB colors over a normalized 2D plane (typically
+[-1, 1] × [-1, 1]) given a set of anchor points with associated colors.
+It is used to build smooth color fields where each coordinate (e.g. emotional
+valence and arousal) maps to a visually meaningful RGB value, and can also
+render these mappings as images for inspection or debugging.
+"""
+
 import numpy as np
 import cv2
 import scipy.spatial

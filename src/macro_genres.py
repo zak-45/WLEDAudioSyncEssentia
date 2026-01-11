@@ -1,3 +1,11 @@
+"""Utilities for grouping fine-grained genres into broader macro categories.
+
+This module takes the long list of Discogs-style genre labels and builds
+coarser macro-genres by stripping suffixes from labels and aggregating their
+probabilities. It allows the system to operate either on detailed genres or
+on more stable, human-friendly macro groups using simple mean or max pooling.
+"""
+
 from collections import defaultdict
 
 def build_macro_mapping(labels):

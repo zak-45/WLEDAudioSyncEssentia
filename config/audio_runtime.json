@@ -3,8 +3,8 @@
     "device_rate": 44100,
     "model_rate": 16000,
     "channels_default": 2,
-    "min_rms": 0.002,
-    "ref_rms": 0.05,
+    "min_rms": 0.004,
+    "ref_rms": 0.035,
     "device_index": 2,
     "silence_timeout": 0.75
   },
@@ -33,7 +33,7 @@
   },
 
   "bpm": {
-    "doubling_threshold": 100
+    "doubling_threshold": 110
   },
 
   "rt_mood": {

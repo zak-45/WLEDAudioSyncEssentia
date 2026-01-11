@@ -1,3 +1,11 @@
+"""Runtime configuration loader that exposes JSON settings as properties.
+
+This module reads a single JSON file at startup and provides typed, grouped
+accessors for audio, buffering, smoothing, activity, BPM, and RTMood options.
+It keeps all tunable parameters in one place so the analysis and rendering
+code can stay clean and rely on consistent configuration values.
+"""
+
 import json
 
 class RuntimeConfig:

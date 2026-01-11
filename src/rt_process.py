@@ -1,3 +1,13 @@
+"""Real-time audio pre-processing for fast activity and motion estimation.
+
+This module maintains short sliding buffers over the incoming audio stream and
+turns them into a single activity_energy value that tracks how loud and
+rhythmically active the music is. It normalizes loudness and envelope motion,
+adapts to the current noise floor, and applies temporal smoothing so that
+downstream color and lighting logic receive a stable but responsive energy
+signal.
+"""
+
 from collections import deque
 
 import numpy as np

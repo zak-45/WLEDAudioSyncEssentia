@@ -1,3 +1,12 @@
+"""On-screen visualization of live genre, mood, and color decisions.
+
+This module renders a small OpenCV window that shows the current genre label,
+hue breakdown, valence and energy values, and preview swatches for base and
+accent colors. It is intended purely for debugging and tuning, giving a visual
+peek into what the analysis pipeline is doing without affecting OSC output or
+LED behaviour.
+"""
+
 import cv2
 import numpy as np
 import threading

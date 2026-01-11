@@ -1,5 +1,11 @@
-import numpy as np
-import cv2
+"""Color mapping for continuous emotion coordinates in a valence–arousal space.
+
+This module turns high-level emotional descriptors (valence and arousal in
+[-1, 1]) into smooth, visually pleasing RGB colors using a precomputed 2D
+emotion surface. It is designed to provide stable, gradual color changes that
+track the emotional character of music without abrupt jumps.
+"""
+
 from  src.color_map_2d import *
 
 

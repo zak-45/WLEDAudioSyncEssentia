@@ -1,4 +1,12 @@
 # src/analysis_process.py
+"""Worker process that performs all heavy audio analysis and OSC output.
+
+This module defines the multiprocessing entry point used to run genre
+classification, mood estimation, and lighting control logic in a separate
+process. By isolating the analysis pipeline here, the main application can
+capture audio and handle UI or networking without being blocked by model
+inference or visualization work.
+"""
 
 def run_analysis_process(
     audio_queue,

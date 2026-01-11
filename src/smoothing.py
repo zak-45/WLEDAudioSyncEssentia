@@ -1,3 +1,11 @@
+"""Temporal smoothing utilities for noisy genre predictions.
+
+This module provides a lightweight exponential moving average over model
+probabilities so genre outputs become more stable and readable over time.
+It is used to dampen frame-to-frame noise from the classifier while still
+allowing the system to follow gradual changes in the music.
+"""
+
 import numpy as np
 
 class GenreSmoother:

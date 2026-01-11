@@ -1,3 +1,11 @@
+"""Thin wrapper around a UDP OSC client for sending analysis results.
+
+This module centralizes all outgoing OSC communication so the rest of the code
+can emit genre, mood, and control data with simple method calls. It hides the
+details of the underlying python-osc client and provides a consistent place to
+extend or customize OSC addressing.
+"""
+
 from pythonosc.udp_client import SimpleUDPClient
 
 class OSCSender:
