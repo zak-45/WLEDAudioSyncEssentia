@@ -2,6 +2,7 @@ import json
 
 class RuntimeConfig:
     def __init__(self, json_path):
+
         with open(json_path, "r", encoding="utf-8") as f:
             self.cfg = json.load(f)
 
@@ -88,3 +89,8 @@ class RuntimeConfig:
     @property
     def DOUBLING_THRESHOLD(self):
         return self.cfg["bpm"]["doubling_threshold"]
+
+    # --- RTMood Lift ---
+    @property
+    def RT_MOOD_LIFT(self):
+        return self.cfg["rt_mood"]["rt_mood_lift"]

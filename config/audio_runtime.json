@@ -18,10 +18,10 @@
     "growth_rate": 0.5,
     "shrink_rate": 2.0,
 
-    "confidence_threshold": 0.25,
+    "confidence_threshold": 0.30,
     "stability_frames": 3,
 
-    "activate": false
+    "activate": true
   },
 
   "activity_energy": {
@@ -34,6 +34,11 @@
 
   "bpm": {
     "doubling_threshold": 100
+  },
+
+  "rt_mood": {
+    "rt_mood_lift": false
   }
+
 
 }

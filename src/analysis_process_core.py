@@ -6,7 +6,6 @@ import time
 import numpy as np
 
 from src.effnet_classifier import EffnetClassifier, AuxClassifier
-from config.genre_flash_shape import GENRE_FLASH_SHAPES
 from src.macro_genres import collapse_to_macro
 from src.model_loader import discover_models
 from src.smoothing import GenreSmoother
@@ -14,11 +13,18 @@ from src.mood_color_mapper import MoodColorMapper
 from src.adaptive_buffer import AdaptiveBuffer
 from src.utils import compute_color
 from src.genre_color_profile_loader import load_genre_color_profiles
+from src.emotion_color_mapper import EmotionColorMapper
+
+rt_color_mapper = EmotionColorMapper(
+    mood_image_path="assets/music_color_mood.png",
+    smoothing=0.85   # recommended for LEDs
+)
+
+with open("config/genre_flash_shape.json", "r") as f:
+    GENRE_FLASH_SHAPES = json.load(f)
 
 # fetch all models from folder
 models = discover_models("models")
-#
-DEFAULT_FLASH_SHAPE = "pulse"
 #
 
 class AnalysisCore:
@@ -34,10 +40,12 @@ class AnalysisCore:
         debug,
         aux,
         activate_buffer,
+        rt_mood_lift,
     ):
+        self.rt_mood_lift = rt_mood_lift
         self.accent_strength = 0.0
         self.aux = aux
-        self.danceability = 0.5
+        self.danceability = None
         self.aux_classifiers = []
         self.last_non_silent_time = time.time()
         self.audio_queue = audio_queue
@@ -150,6 +158,15 @@ class AnalysisCore:
             # load genre profile params from JSON
             profile = self.genre_profiles.get(macro_label, self.default_profile)
 
+            if self.debug:
+                print(
+                    "[PROFILE DEBUG]",
+                    f"macro={macro_label}",
+                    f"hue={profile.hue}",
+                    f"bright_floor={profile.bright_floor}",
+                    f"sat_floor={profile.sat_floor}",
+                )
+
             #color
             genre_hue = profile.hue
 
@@ -238,7 +255,53 @@ class AnalysisCore:
             # --------------------------------------------------
             # Mood computation
             # --------------------------------------------------
-            valence = self.mood_mapper.compute_valence(top5)
+
+
+            # --------------------------------------------------
+            # Perceptual brightness proxy (for valence only)
+            # --------------------------------------------------
+
+            # brightness must NOT be energy-driven
+
+            if self.danceability is not None:
+                perceptual_brightness = np.clip(
+                    profile.bright_floor +
+                    0.6 * top_conf +  # genre certainty
+                    0.4 * self.danceability,  # musical feel (if available)
+                    0.0, 1.0
+                )
+            else:
+                perceptual_brightness = np.clip(
+                    profile.bright_floor +
+                    0.5 * top_conf,
+                    0.0, 1.0
+                )
+
+            if self.debug:
+                print(
+                    "[BRIGHTNESS DEBUG]",
+                    f"profile_floor={profile.bright_floor:.3f}",
+                    f"activity_energy={activity_energy:.3f}",
+                    f"computed={perceptual_brightness:.3f}",
+                )
+
+                print(
+                    f"[INPUT DEBUG] "
+                    f"p_bright={perceptual_brightness:.3f} "
+                    f"energy={activity_energy:.3f} "
+                    f"profile_floor={profile.bright_floor:.3f} "
+                    f"boost={profile.energy_boost:.3f}"
+                )
+
+            valence = self.mood_mapper.compute_valence(top5, perceptual_brightness, activity_energy, top_conf)
+
+            if self.debug:
+                print(
+                    f"VALENCE INPUTS | "
+                    f"p_bright={perceptual_brightness:.3f} "
+                    f"energy={activity_energy:.3f} "
+                    f"conf={top_conf:.3f}"
+                )
 
             emotional_weight = abs(valence - 0.5) * 2.0
 
@@ -390,6 +453,74 @@ class AnalysisCore:
             if self.debug:
                 print(mood_data)
 
+
+            # --------------------------------------------------
+            # Mood like RTMood
+            # --------------------------------------------------
+            # --------------------------------------------------
+            # RTMood perceptual expansion
+            # Valence is intentionally conservative (~0.4–0.6),
+            # so we expand contrast ONLY for RTMood mapping.
+            # --------------------------------------------------
+
+            # --------------------------------------------------
+            # RTMood energy protection
+            # RTMood collapses to black at energy == -1
+            # So we keep a perceptual floor
+            # --------------------------------------------------
+
+            v = float(valence)
+
+            # expand around neutral (0.5 → 0.0)
+            v_expanded = (0.5 + np.sign(v - 0.5) * abs(v - 0.5) ** 0.6)
+            v_expanded = float(np.clip(v_expanded, 0.0, 1.0))
+
+            soft_valence = (v_expanded * 2.0) - 1.0
+
+            # --------------------------------------------------
+            # RTMood-safe energy mapping
+            # RTMood collapses chroma near ±1
+            # --------------------------------------------------
+
+            # map [0,1] → [-1,1]
+            soft_energy = (activity_energy * 2.0) - 1.0
+
+            # perceptual clamp (CRITICAL)
+            SOFT_E_MAX = 0.75
+            SOFT_E_MIN = -0.75
+
+            soft_energy = float(np.clip(soft_energy, SOFT_E_MIN, SOFT_E_MAX))
+
+            if self.debug:
+                print(
+                    f"[RTMOOD INPUT] "
+                    f"valence={valence:.3f} "
+                    f"expanded={v_expanded:.3f} "
+                    f"soft_v={soft_valence:.3f} "
+                    f"soft_e={soft_energy:.3f}"
+                )
+
+            rtr, rtg, rtb = rt_color_mapper.get_rgb(soft_valence, soft_energy)
+
+            if self.rt_mood_lift:
+                # optional RTMood luminance lift
+                rt_lift = 0.4 + 0.6 * activity_energy
+
+                rtr = int(rtr * rt_lift)
+                rtg = int(rtg * rt_lift)
+                rtb = int(rtb * rt_lift)
+
+                rtr = min(255, rtr)
+                rtg = min(255, rtg)
+                rtb = min(255, rtb)
+
+            self.osc.send("/WASEssentia/mood/rt/color/r", rtr / 255.0)
+            self.osc.send("/WASEssentia/mood/rt/color/g", rtg / 255.0)
+            self.osc.send("/WASEssentia/mood/rt/color/b", rtb / 255.0)
+
+            if self.debug:
+                print("RTMood color:", rtr, rtg, rtb)
+
             # --------------------------------------------------
             # Visual debug
             # --------------------------------------------------
@@ -419,6 +550,7 @@ class AnalysisCore:
         self.smooth.reset()
         self.adaptive.reset()
         self.adaptive.current = self.cfg.MIN_BUFFER_SECONDS
+        self.mood_mapper._valence = 0.5
         self.osc.send_silence(0)
 
         if self.debug:
@@ -446,7 +578,7 @@ class AnalysisCore:
 
     # ==================================================
     def update_accent_strength(self, beat, energy, genre):
-        shape = GENRE_FLASH_SHAPES.get(genre, DEFAULT_FLASH_SHAPE)
+        shape = GENRE_FLASH_SHAPES.get(genre, GENRE_FLASH_SHAPES.get("DEFAULT", "pulse"))
         decay = 0.0
 
         if beat:
@@ -488,3 +620,4 @@ class AnalysisCore:
 
         self.accent_strength *= decay
         self.accent_strength = max(0.0, min(1.0, self.accent_strength))
+

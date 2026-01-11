@@ -18,10 +18,22 @@ class MoodColorMapper:
     # ==================================================
 
     def __init__(self, genre_json_path, mood_config_path):
+        self._valence = 0.0
         self.valence_weights = self._build_valence_weights(
             genre_json_path,
             mood_config_path
         )
+
+        with open(mood_config_path, "r", encoding="utf-8") as f:
+            mood_cfg = json.load(f)
+        self.genre_valence = mood_cfg
+
+        self._genre_to_valence = {}
+
+        for mood, block in self.genre_valence.items():
+            w = block["weight"]
+            for g in block["genres"]:
+                self._genre_to_valence[g] = 0.5 + w
 
     # ==================================================
     # VALENCE
@@ -50,19 +62,112 @@ class MoodColorMapper:
 
         return dict(weights)
 
-    def compute_valence(self, genre_probs):
-        valence = 0.0
-        total = 0.0
+    # ==================================================
+    # VALENCE ESTIMATION
+    # ==================================================
 
-        for label, prob in genre_probs:
+    # --------------------------------------------------
+    def compute_valence(
+        self,
+        top5,
+        brightness: float,
+        activity_energy: float,
+        confidence: float
+    ) -> float:
+        """
+        Robust valence estimation in [0,1]
+
+        Inputs:
+        - top5: genre probabilities
+        - brightness: perceptual brightness [0,1]
+        - activity_energy: physical energy [0,1]
+        - confidence: genre certainty [0,1]
+        """
+
+        # --------------------------------------------------
+        # 1. Genre prior (existing logic)
+        # --------------------------------------------------
+        genre_valence = 0.0
+        weight_sum = 0.0
+
+        for label, prob in top5:
             macro = label.split("---")[0]
-            valence += self.valence_weights.get(macro, 0.0) * prob
-            total += prob
+            gv = self._genre_to_valence.get(macro, 0.5)
+            genre_valence += gv * prob
+            weight_sum += prob
+            # print("[GENRE LOOKUP]", macro, "→", gv)
 
-        if total > 0:
-            valence /= total
+        if weight_sum > 0:
+            genre_valence /= weight_sum
+        else:
+            genre_valence = 0.5
 
-        return float(np.clip(valence, -1.0, 1.0))
+        genre_valence = float(np.clip(genre_valence, 0.0, 1.0))
+
+        # --------------------------------------------------
+        # 2. Mode proxy (major / minor feeling)
+        # --------------------------------------------------
+        # Bright + stable = major-ish
+
+        mode_proxy = brightness * (0.6 + 0.4 * activity_energy)
+        mode_proxy = float(np.clip(mode_proxy, 0.0, 1.0))
+
+        # --------------------------------------------------
+        # 3. Activity bias (directional, not additive)
+        # --------------------------------------------------
+        if brightness > 0.5:
+            activity_bias = +0.1 * activity_energy
+        else:
+            activity_bias = -0.1 * activity_energy
+
+        # --------------------------------------------------
+        # 4. Confidence stabilizer
+        # --------------------------------------------------
+        confidence_bias = 0.1 * (confidence - 0.5)
+
+        # --------------------------------------------------
+        # 5. Weighted fusion
+        # --------------------------------------------------
+        raw_valence = (
+            0.35 * genre_valence +
+            0.25 * brightness +
+            0.20 * mode_proxy +
+            0.10 * activity_bias +
+            0.10 * confidence_bias
+        )
+
+        raw_valence = float(np.clip(raw_valence, 0.0, 1.0))
+
+        # --------------------------------------------------
+        # DEBUG
+        # --------------------------------------------------
+        """
+        print(
+            f"[VALENCE DEBUG] "
+            f"raw={raw_valence:.3f} "
+            f"prev={self._valence:.3f} "
+            f"bright={brightness:.3f} "
+            f"energy={activity_energy:.3f} "
+            f"conf={confidence:.3f}"
+        )
+
+        print(
+            "[GENRE VALENCE DEBUG]",
+            f"genre_valence={genre_valence:.3f}",
+            f"top5={[(l.split('---')[0], round(p, 3)) for l, p in top5]}"
+        )
+
+        """
+        # --------------------------------------------------
+        # 6. Temporal smoothing (important!)
+        # --------------------------------------------------
+        alpha = 0.2
+        self._valence = (
+            alpha * raw_valence +
+            (1.0 - alpha) * self._valence
+        )
+
+        return float(self._valence)
 
     # ==================================================
     # HUE

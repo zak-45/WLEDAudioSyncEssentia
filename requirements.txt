@@ -8,3 +8,4 @@ soxr
 opencv-python
 aubio-ledfx
 rich
+scipy

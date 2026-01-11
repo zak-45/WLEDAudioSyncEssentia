@@ -25,9 +25,7 @@ class AubioBeatDetector:
 
         # internal rolling buffer
         self._buffer = np.zeros(0, dtype=np.float32)
-
         self.last_beat_time = 0.0
-
         self.detected_bpm = 0.0
 
     def process(self, audio_block: np.ndarray) -> tuple[float, float, float]:

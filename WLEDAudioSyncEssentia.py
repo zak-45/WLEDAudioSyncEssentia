@@ -68,13 +68,14 @@ def on_audio(audio, rms_rt):
         audio = audio.reshape(-1, 2).mean(axis=1)
 
     # --------------------------------------------------
-    # Silence detection
+    # Silence detection & main work
     # --------------------------------------------------
     now = time.time()
 
     if rms_rt < cfg.MIN_RMS:
         if not is_silent and (now - last_non_silent_time) >= cfg.SILENCE_TIMEOUT:
             is_silent = True
+            # put on queue so analysis process core know we are in silent phase
             put_on_queue(audio, rms_rt, time.time(), 0, is_silent)
 
     else:
@@ -87,13 +88,15 @@ def on_audio(audio, rms_rt):
         last_non_silent_time = now
         is_silent = False
 
-        # beat detector, dB
+        # beat detector, dB, BPM
         beat, level, bpm = aubio_beat_detector.process(audio)
 
         # resample to model rate
         audio = resample(audio, AUDIO_DEVICE_RATE, MODEL_SAMPLE_RATE)
+        # calculate activity energy
         activity_energy = rtp.run(audio)
 
+        # beat detected
         if beat and (now - last_beat_time) > BEAT_HOLD:
 
             last_beat_time = now
@@ -112,7 +115,7 @@ def on_audio(audio, rms_rt):
             osc.send('/WASEssentia/audio/activity_energy', activity_energy)
 
 
-        # put on queue
+        # put on queue anyway
         put_on_queue(audio, rms_rt, activity_energy, beat, is_silent)
 
 

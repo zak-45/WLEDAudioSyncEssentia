@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "description": "Genre-driven accent flash behavior (beat → temporal response)",
+    "version": 1
+  },
+
+  "DEFAULT": "pulse",
+
+  "Metal": "punch",
+
+  "Rock": "pulse",
+  "Electronic": "pulse",
+
+  "Hip Hop": "bounce",
+  "Latin": "bounce",
+  "Funk / Soul": "bounce",
+  "Brass & Military": "bounce",
+
+  "Pop": "hold",
+  "Children's": "hold",
+
+  "Reggae": "hold",
+  "Stage & Screen": "hold",
+
+  "Jazz": "glow",
+  "Blues": "glow",
+  "Folk, World, & Country": "glow",
+  "Classical": "glow",
+
+  "Non-Music": "none"
+}

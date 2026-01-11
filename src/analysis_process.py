@@ -44,7 +44,8 @@ def run_analysis_process(
         color1=color1,
         debug=debug,
         aux=aux,
-        activate_buffer=cfg.ACTIVATE_BUFFER
+        activate_buffer=cfg.ACTIVATE_BUFFER,
+        rt_mood_lift=cfg.RT_MOOD_LIFT
     )
 
     print("🧠 Analysis process ready")

@@ -1,6 +1,6 @@
 {
   "positive": {
-    "weight": 0.6,
+    "weight": 0.25,
     "genres": [
       "Pop",
       "Reggae",
@@ -10,37 +10,38 @@
     ]
   },
 
-  "energetic": {
-    "weight": 0.4,
+  "uplifting": {
+    "weight": 0.15,
     "genres": [
-      "Electronic",
-      "Hip Hop",
-      "Rock",
-      "Brass & Military"
-    ]
-  },
-
-  "calm": {
-    "weight": -0.2,
-    "genres": [
-      "Classical",
-      "Jazz",
-      "Folk, World, & Country",
-      "Stage & Screen"
-    ]
-  },
-
-  "melancholic": {
-    "weight": -0.4,
-    "genres": [
-      "Blues"
+      "Electronic"
     ]
   },
 
   "neutral": {
     "weight": 0.0,
     "genres": [
+      "Hip Hop",
+      "Brass & Military",
       "Non-Music"
+    ]
+  },
+
+  "reflective": {
+    "weight": -0.15,
+    "genres": [
+      "Jazz",
+      "Rock",
+      "Metal",
+      "Folk, World, & Country",
+      "Stage & Screen"
+    ]
+  },
+
+  "melancholic": {
+    "weight": -0.25,
+    "genres": [
+      "Blues",
+      "Classical"
     ]
   }
 }

@@ -5,7 +5,7 @@
   },
 
   "DEFAULT": {
-    "hue": 270,
+    "hue": 210,
     "sat_floor": 0.30,
     "bright_floor": 0.30,
     "mood_hue_weight": 0.45,
@@ -16,9 +16,9 @@
 
   "Rock": {
     "hue": 0,
-    "sat_floor": 0.65,
+    "sat_floor": 0.68,
     "bright_floor": 0.45,
-    "energy_boost": 1.10,
+    "energy_boost": 1.15,
     "accent_gain": 0.90,
     "flash_decay": 0.69,
     "mood_hue_weight": 0.55
@@ -46,9 +46,9 @@
 
   "Electronic": {
     "hue": 200,
-    "sat_floor": 0.66,
-    "bright_floor": 0.46,
-    "energy_boost": 1.10,
+    "sat_floor": 0.64,
+    "bright_floor": 0.45,
+    "energy_boost": 1.05,
     "accent_gain": 0.90,
     "flash_decay": 0.69,
     "mood_hue_weight": 0.55
@@ -66,8 +66,8 @@
 
   "Pop": {
     "hue": 320,
-    "sat_floor": 0.56,
-    "bright_floor": 0.44,
+    "sat_floor": 0.54,
+    "bright_floor": 0.48,
     "energy_boost": 0.98,
     "accent_gain": 0.76,
     "flash_decay": 0.74,
