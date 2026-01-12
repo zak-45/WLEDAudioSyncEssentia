@@ -1,9 +1,11 @@
 import sys
-from multiprocessing import Process, Queue, freeze_support
+from multiprocessing import Process, Queue, freeze_support, Event
 import queue
 import argparse
 import time
 import threading
+import signal
+import atexit
 
 import pyaudio
 
@@ -35,8 +37,11 @@ BEAT_HOLD = 0.15  # seconds, prevents double triggers
 is_silent = False
 last_non_silent_time = time.time()
 
-
 spinner = BeatPrinter()
+
+# Global shutdown event
+shutdown_event = Event()
+
 
 def list_devices(p: pyaudio.PyAudio):
     """Lists all available audio input devices."""
@@ -58,13 +63,19 @@ def put_on_queue(audio, rms_rt, activity_energy, beat, silent):
         except queue.Empty:
             pass
 
+
 def on_audio(audio, rms_rt):
     global last_beat_time, is_silent, last_non_silent_time
+
+    # Check shutdown
+    if shutdown_event.is_set():
+        return
+
     # Convert stereo to mono only if the stream has 2 channels
     if CHANNELS == 2:
         # interleaved stereo: [L0, R0, L1, R1, ...]
         frames = audio.size // 2
-        audio = audio[:frames * 2]          # drop odd sample if any
+        audio = audio[:frames * 2]  # drop odd sample if any
         audio = audio.reshape(-1, 2).mean(axis=1)
 
     # --------------------------------------------------
@@ -76,7 +87,7 @@ def on_audio(audio, rms_rt):
         if not is_silent and (now - last_non_silent_time) >= cfg.SILENCE_TIMEOUT:
             is_silent = True
             # put on queue so analysis process core know we are in silent phase
-            put_on_queue(audio, rms_rt, time.time(), 0, is_silent)
+            put_on_queue(audio, rms_rt, 0, False, is_silent)
 
     else:
 
@@ -114,9 +125,57 @@ def on_audio(audio, rms_rt):
             osc.send('/WASEssentia/audio/dB', level)
             osc.send('/WASEssentia/audio/activity_energy', activity_energy)
 
-
         # put on queue anyway
         put_on_queue(audio, rms_rt, activity_energy, beat, is_silent)
+
+
+def cleanup_resources(in_main_audio, in_analysis_proc):
+    """Proper cleanup of all resources"""
+    print("\n🛑 Shutting down gracefully...")
+
+    # Signal shutdown
+    shutdown_event.set()
+
+    # Stop audio stream first (prevents new data)
+    if in_main_audio:
+        try:
+            in_main_audio.stop()
+            print("✓ Audio stream stopped")
+        except Exception as e:
+            print(f"⚠ Error stopping audio: {e}")
+
+    # Give audio thread time to finish
+    time.sleep(0.2)
+
+    # Drain the queue
+    try:
+        while not audio_queue.empty():
+            audio_queue.get_nowait()
+    except:
+        pass
+
+    # Terminate analysis process
+    if in_analysis_proc and in_analysis_proc.is_alive():
+        try:
+            in_analysis_proc.terminate()
+            in_analysis_proc.join(timeout=2)
+
+            if in_analysis_proc.is_alive():
+                print("⚠ Force killing analysis process...")
+                in_analysis_proc.kill()
+                in_analysis_proc.join(timeout=1)
+
+            print("✓ Analysis process stopped")
+        except Exception as e:
+            print(f"⚠ Error stopping analysis: {e}")
+
+    print("✓ Cleanup complete")
+
+
+def signal_handler(signum, frame):
+    """Handle Ctrl+C and other termination signals"""
+    print("\n⚠ Received shutdown signal")
+    shutdown_event.set()
 
 
 if __name__ == "__main__":
@@ -134,6 +193,7 @@ if __name__ == "__main__":
         # show message
 
         from src.message import Msg
+
         Msg.message()
         input('enter to continue...')
         sys.exit()
@@ -216,7 +276,6 @@ if __name__ == "__main__":
         help="If present, Print activity_energy values"
     )
 
-
     parser.add_argument(
         "--color1",
         action="store_true",
@@ -228,7 +287,7 @@ if __name__ == "__main__":
     # Command to list devices
     list_parser = subparsers.add_parser("list", help="List available audio input devices.")
 
-    args, unknown = parser.parse_known_args()
+    args = parser.parse_args()
 
     if args.command == "list":
         pa = pyaudio.PyAudio()
@@ -330,19 +389,27 @@ if __name__ == "__main__":
                 DEBUG_DATA,
                 VISUAL_DEBUG,
                 AUX,
+                shutdown_event,
             ),
             daemon=True
         )
 
         analysis_proc.start()
 
+        # Register signal handlers
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        # Register cleanup on exit
+        # atexit.register(cleanup_resources, main_audio, analysis_proc)
+
         try:
-            # blocking call
-            while True:
-                time.sleep(1)
+            # blocking call with shutdown check
+            while not shutdown_event.is_set():
+                time.sleep(0.1)
         except KeyboardInterrupt:
-            analysis_proc.terminate()
-            main_audio.stop()
-            print("Stopping…")
+            pass
+        finally:
+            cleanup_resources(main_audio, analysis_proc)
 
     print('End WLEDAudioSyncEssentia')

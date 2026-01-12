@@ -28,7 +28,7 @@ from src.emotion_color_mapper import EmotionColorMapper
 
 rt_color_mapper = EmotionColorMapper(
     mood_image_path="assets/music_color_mood.png",
-    smoothing=0.85   # recommended for LEDs
+    smoothing=0.85  # recommended for LEDs
 )
 
 with open(root_path("config/genre_flash_shape.json"), "r") as f:
@@ -36,23 +36,27 @@ with open(root_path("config/genre_flash_shape.json"), "r") as f:
 
 # fetch all models from folder
 models = discover_models(root_path("models"))
+
+
 #
 
 class AnalysisCore:
     def __init__(
-        self,
-        audio_queue,
-        cfg,
-        osc,
-        visual,
-        use_macro,
-        macro_agg,
-        color1,
-        debug,
-        aux,
-        activate_buffer,
-        rt_mood_lift,
+            self,
+            audio_queue,
+            cfg,
+            osc,
+            visual,
+            use_macro,
+            macro_agg,
+            color1,
+            debug,
+            aux,
+            activate_buffer,
+            rt_mood_lift,
+            shutdown_event=None,
     ):
+        self.shutdown_event = shutdown_event
         self.rt_mood_lift = rt_mood_lift
         self.accent_strength = 0.0
         self.aux = aux
@@ -111,6 +115,16 @@ class AnalysisCore:
         hop = int(self.cfg.MODEL_SAMPLE_RATE * self.cfg.HOP_SECONDS)
 
         while True:
+            # Check shutdown event
+            if self.shutdown_event and self.shutdown_event.is_set():
+                print("🛑 Analysis process shutting down...")
+                if self.visual:
+                    try:
+                        self.visual.close()
+                    except:
+                        pass
+                break
+
             try:
                 audio, rms_rt, ts, activity_energy, beat, is_silent = self.audio_queue.get(timeout=0.1)
             except queue.Empty:
@@ -122,7 +136,6 @@ class AnalysisCore:
             if is_silent:
                 self._enter_silence()
                 continue
-
 
             # --------------------------------------------------
             # ADAPTIVE GENRE BUFFER
@@ -178,10 +191,10 @@ class AnalysisCore:
                     f"sat_floor={profile.sat_floor}",
                 )
 
-            #color
+            # color
             genre_hue = profile.hue
 
-            #energy boost
+            # energy boost
             activity_energy = np.clip(
                 activity_energy * profile.energy_boost,
                 0.0, 1.0
@@ -238,7 +251,6 @@ class AnalysisCore:
                 for i, (label, _) in enumerate(top5_macro):
                     self.osc.send(f"/WASEssentia/genre/macro_top{i}", label)
 
-
             # --------------------------------------------------
             # AUX classifiers
             # --------------------------------------------------
@@ -266,7 +278,6 @@ class AnalysisCore:
             # --------------------------------------------------
             # Mood computation
             # --------------------------------------------------
-
 
             # --------------------------------------------------
             # Perceptual brightness proxy (for valence only)
@@ -338,7 +349,6 @@ class AnalysisCore:
 
             brightness = float(np.clip(brightness, 0.0, 1.0))
             saturation = float(np.clip(saturation, 0.0, 1.0))
-
 
             # --------------------------------------------------
             # Mood color
@@ -453,17 +463,16 @@ class AnalysisCore:
             )
 
             mood_data = json.dumps({
-                    "valence": round(valence, 3),
-                    "activity_energy": round(activity_energy, 3),
-                    "emotional_energy": round(emotional_energy, 3),
-                    "R": r,
-                    "G": g,
-                    "B": b
-                })
+                "valence": round(valence, 3),
+                "activity_energy": round(activity_energy, 3),
+                "emotional_energy": round(emotional_energy, 3),
+                "R": r,
+                "G": g,
+                "B": b
+            })
 
             if self.debug:
                 print(mood_data)
-
 
             # --------------------------------------------------
             # Mood like RTMood
@@ -631,4 +640,3 @@ class AnalysisCore:
 
         self.accent_strength *= decay
         self.accent_strength = max(0.0, min(1.0, self.accent_strength))
-

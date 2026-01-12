@@ -20,6 +20,7 @@ def run_analysis_process(
     debug,
     visual_enabled,
     aux,
+    shutdown_event,
 ):
     """
     Windows-safe multiprocessing entry point.
