@@ -12,20 +12,20 @@
   "buffer": {
     "initial_seconds": 2.5,
     "min_seconds": 2.5,
-    "max_seconds": 8.0,
+    "max_seconds": 6.0,
     "hop_seconds": 0.5,
 
-    "growth_rate": 0.5,
-    "shrink_rate": 2.0,
+    "growth_rate": 0.6,
+    "shrink_rate": 1.2,
 
-    "confidence_threshold": 0.30,
+    "confidence_threshold": 0.35,
     "stability_frames": 3,
 
     "activate": true
   },
 
   "activity_energy": {
-    "motion_ref": 0.01500
+    "motion_ref": 0.025
   },
 
   "smoothing": {
