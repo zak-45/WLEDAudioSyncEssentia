@@ -1,0 +1,22 @@
+{
+  "thresholds": {
+    "high_arousal": 0.3,
+    "low_arousal": -0.3,
+    "positive_valence": 0.1,
+    "negative_valence": -0.1
+  },
+  "effects": {
+    "calm": {
+      "condition": "arousal <= low_arousal and valence >= positive_valence",
+      "effect": "Aurora"
+    },
+    "sad": {
+      "condition": "arousal <= low_arousal and valence <= negative_valence",
+      "effect": "Fade"
+    },
+    "neutral": {
+      "condition": "True",
+      "effect": "Solid"
+    }
+  }
+}

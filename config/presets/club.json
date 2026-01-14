@@ -1,0 +1,22 @@
+{
+  "thresholds": {
+    "high_arousal": 0.5,
+    "low_arousal": -0.2,
+    "positive_valence": 0.2,
+    "negative_valence": -0.2
+  },
+  "effects": {
+    "drop": {
+      "condition": "arousal >= high_arousal",
+      "effect": "Strobe"
+    },
+    "groove": {
+      "condition": "arousal >= 0.2",
+      "effect": "Chase"
+    },
+    "neutral": {
+      "condition": "True",
+      "effect": "Rainbow"
+    }
+  }
+}

@@ -26,6 +26,18 @@ from src.utils import compute_color
 from src.genre_color_profile_loader import load_genre_color_profiles
 from src.emotion_color_mapper import EmotionColorMapper
 
+from src.emotion_mapper_aux import EmotionMapperAUX, clamp
+from src.effect_config_manager import EffectConfigManager
+
+config_mgr = EffectConfigManager("config/presets")
+emotion = EmotionMapperAUX(config_mgr)
+
+from src.emotion_debug_cv2 import EmotionDebugCV2
+
+debug = EmotionDebugCV2(size=520)
+
+
+
 rt_color_mapper = EmotionColorMapper(
     mood_image_path="assets/music_color_mood.png",
     smoothing=0.85  # recommended for LEDs
@@ -255,6 +267,7 @@ class AnalysisCore:
             # AUX classifiers
             # --------------------------------------------------
             if self.aux_classifiers:
+                aux_dict = {}
                 embeddings = self.clf.compute_embeddings(segment)
                 for aux in self.aux_classifiers:
                     results = aux.classify(embeddings)
@@ -263,6 +276,20 @@ class AnalysisCore:
 
                     if aux.name == "danceability classifier":
                         self.danceability = float(results.get("danceable", 0.5))
+                        aux_intensity = (
+                                0.5 * activity_energy +
+                                0.5 * self.danceability
+                        )
+                        aux_intensity = clamp(aux_intensity, 0, 1.0)
+                        aux_dict["danceable"] = aux_intensity
+                    elif aux.name == "mood aggressive":
+                        aux_dict["aggressive"] = float(results.get("aggressive", 0.5))
+                    elif aux.name == "mood happy":
+                        aux_dict["happy"] = float(results.get("happy", 0.5))
+                    elif aux.name == "mood relaxed":
+                        aux_dict["relaxed"] = float(results.get("relaxed", 0.5))
+                    elif aux.name == "mood sad":
+                        aux_dict["sad"] = float(results.get("sad", 0.5))
 
                     if self.debug:
                         print('_|_')
@@ -274,6 +301,26 @@ class AnalysisCore:
                     for label, value in results.items():
                         path = f"/WASEssentia/aux/{aux.name.replace(' ', '_')}/{label.replace(' ', '_')}"
                         self.osc.send(path, float(value))
+
+                # Update context when known
+                emotion.update_context(
+                    genre=top_label
+                )
+
+                valence, arousal, intensity = emotion.compute_emotion(aux_dict)
+                wled_data = emotion.emotion_to_wled(valence, arousal, intensity)
+
+                debug.draw(
+                    valence=valence,
+                    arousal=arousal,
+                    intensity=intensity,
+                    emotion_label=emotion.emotion_label(valence, arousal)[0],
+                    effect=wled_data["effect"],
+                    profile='to be checked'
+                )
+
+                # send_wled_command(wled_data)
+
 
             # --------------------------------------------------
             # Mood computation
