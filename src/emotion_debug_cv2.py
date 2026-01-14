@@ -71,7 +71,7 @@ class EmotionDebugCV2:
     # --------------------------------------------------
 
     def draw(self, valence, arousal, intensity,
-             emotion_label="", effect="", profile=""):
+             emotion_label="", effect="", profile="", genre=""):
 
         img = self.background.copy()
 
@@ -87,7 +87,7 @@ class EmotionDebugCV2:
 
         # Color swatch
         cv2.rectangle(img,
-                      (20, self.size - 90),
+                      (20, self.size - 80),
                       (140, self.size - 30),
                       rgb[::-1], -1)
 
@@ -97,13 +97,14 @@ class EmotionDebugCV2:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                         (230, 230, 230), 1)
 
-        text(30,  f"Emotion : {emotion_label}")
-        text(55,  f"Effect  : {effect}")
-        text(80,  f"Profile : {profile}")
-        text(105, f"Valence : {valence:+.2f}")
-        text(130, f"Arousal : {arousal:+.2f}")
-        text(155, f"Intensity: {intensity:.2f}")
-        text(self.size - 40, f"RGB: {rgb}")
+        text(30, f"Genre : {genre}")
+        text(60,  f"Emotion : {emotion_label}")
+        text(85,  f"Effect  : {effect}")
+        text(110,  f"Profile : {profile}")
+        text(135, f"Valence : {valence:+.2f}")
+        text(160, f"Arousal : {arousal:+.2f}")
+        text(185, f"Intensity: {intensity:.2f}")
+        text(self.size - 30, f"RGB: {rgb}")
 
         cv2.imshow(WINDOW, img)
         cv2.waitKey(1)

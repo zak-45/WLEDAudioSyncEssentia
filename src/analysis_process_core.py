@@ -34,10 +34,6 @@ emotion = EmotionMapperAUX(config_mgr)
 
 from src.emotion_debug_cv2 import EmotionDebugCV2
 
-debug = EmotionDebugCV2(size=520)
-
-
-
 rt_color_mapper = EmotionColorMapper(
     mood_image_path="assets/music_color_mood.png",
     smoothing=0.85  # recommended for LEDs
@@ -120,6 +116,9 @@ class AnalysisCore:
 
         self.prev_segment = None
         self.activity_smooth = 0.0
+
+        if self.debug:
+            self.emotion_visual = EmotionDebugCV2(size=520)
 
     # -----------------------------------------------------
 
@@ -310,13 +309,14 @@ class AnalysisCore:
                 valence, arousal, intensity = emotion.compute_emotion(aux_dict)
                 wled_data = emotion.emotion_to_wled(valence, arousal, intensity)
 
-                debug.draw(
+                self.emotion_visual.draw(
+                    genre=top_label,
                     valence=valence,
                     arousal=arousal,
                     intensity=intensity,
                     emotion_label=emotion.emotion_label(valence, arousal)[0],
                     effect=wled_data["effect"],
-                    profile='to be checked'
+                    profile=profile
                 )
 
                 # send_wled_command(wled_data)

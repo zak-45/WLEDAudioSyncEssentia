@@ -16,6 +16,7 @@ class EmotionMapperAUX:
     def __init__(self, config_manager):
         self.config_manager = config_manager
         self.effects = config_manager.load("default")
+        self.debug = False
 
     # --------------------------------------------------
 
@@ -93,13 +94,14 @@ class EmotionMapperAUX:
         speed = int(40 + 200 * abs(arousal))
         intensity_param = int(50 + 200 * intensity)
 
-        print(
-            f"[WLED] {effect_label:8s} | "
-            f"V={valence:+.2f} "
-            f"A={arousal:+.2f} "
-            f"RGB=({r:3d},{g:3d},{b:3d}) "
-            f"FX={effect}"
-        )
+        if self.debug:
+            print(
+                f"[WLED] {effect_label:8s} | "
+                f"V={valence:+.2f} "
+                f"A={arousal:+.2f} "
+                f"RGB=({r:3d},{g:3d},{b:3d}) "
+                f"FX={effect}"
+            )
 
         return {
             "rgb": (r, g, b),

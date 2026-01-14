@@ -1,18 +1,27 @@
 {
   "thresholds": {
-    "high_arousal": 0.3,
-    "low_arousal": -0.3,
-    "positive_valence": 0.1,
-    "negative_valence": -0.1
+    "high_arousal": 0.4,
+    "low_arousal": -0.4,
+    "positive_valence": 0.2,
+    "negative_valence": -0.2
   },
+
   "effects": {
+    "joy": {
+      "condition": "arousal >= high_arousal and valence >= positive_valence",
+      "effect": "Chase"
+    },
+    "anger": {
+      "condition": "arousal >= high_arousal and valence <= negative_valence",
+      "effect": "Fire"
+    },
     "calm": {
       "condition": "arousal <= low_arousal and valence >= positive_valence",
-      "effect": "Aurora"
-    },
-    "sad": {
-      "condition": "arousal <= low_arousal and valence <= negative_valence",
       "effect": "Fade"
+    },
+    "sadness": {
+      "condition": "arousal <= low_arousal and valence <= negative_valence",
+      "effect": "Twinkle"
     },
     "neutral": {
       "condition": "True",
