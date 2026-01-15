@@ -93,7 +93,7 @@ def emotion_to_rgb(valence, arousal, intensity=1.0):
 
     # --------------------------------------------------
     # 2. White center blending
-    radius = min(1.0, (valence * valence + arousal * arousal) ** 0.10)
+    radius = min(1.0, (valence * valence + arousal * arousal) ** 0.5)
 
     if radius <= WHITE_RADIUS:
         mix = 0.0

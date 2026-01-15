@@ -8,15 +8,18 @@
   "effects": {
     "calm": {
       "condition": "arousal <= low_arousal and valence >= positive_valence",
-      "effect": "Aurora"
+      "effect": "Aurora",
+      "index": 2
     },
     "sad": {
       "condition": "arousal <= low_arousal and valence <= negative_valence",
-      "effect": "Fade"
+      "effect": "Fade",
+      "index": 3
     },
     "neutral": {
       "condition": "True",
-      "effect": "Solid"
+      "effect": "Solid",
+      "index": 4
     }
   }
 }

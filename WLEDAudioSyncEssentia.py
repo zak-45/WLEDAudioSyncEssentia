@@ -5,7 +5,6 @@ import argparse
 import time
 import threading
 import signal
-import atexit
 
 import pyaudio
 
@@ -196,7 +195,7 @@ if __name__ == "__main__":
 
         Msg.message()
         input('enter to continue...')
-        sys.exit()
+        sys.exit(0)
 
     parser = argparse.ArgumentParser()
 
@@ -276,12 +275,6 @@ if __name__ == "__main__":
         help="If present, Print activity_energy values"
     )
 
-    parser.add_argument(
-        "--color1",
-        action="store_true",
-        help="Choose color type Genre centric for final hue"
-    )
-
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Command to list devices
@@ -301,8 +294,6 @@ if __name__ == "__main__":
         OSC_IP = args.osc_ip
         OSC_PORT = args.osc_port
         OSC_PATH = args.osc_path
-
-        COLOR1 = args.color1
 
         VISUAL_DEBUG = args.visual
         DEBUG_DATA = args.debug
@@ -385,7 +376,6 @@ if __name__ == "__main__":
                 OSC_PATH,
                 USE_MACRO_GENRES,
                 MACRO_AGG,
-                COLOR1,
                 DEBUG_DATA,
                 VISUAL_DEBUG,
                 AUX,

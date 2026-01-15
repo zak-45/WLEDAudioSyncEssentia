@@ -44,8 +44,6 @@ with open(root_path("config/genre_flash_shape.json"), "r") as f:
 
 # fetch all models from folder
 models = discover_models(root_path("models"))
-
-
 #
 
 class AnalysisCore:
@@ -57,7 +55,6 @@ class AnalysisCore:
             visual,
             use_macro,
             macro_agg,
-            color1,
             debug,
             aux,
             activate_buffer,
@@ -76,7 +73,6 @@ class AnalysisCore:
         self.osc = osc
         self.visual = visual
         self.debug = debug
-        self.color1 = color1
         self.use_macro = use_macro
         self.macro_agg = macro_agg
         self.is_silent = False
@@ -117,7 +113,7 @@ class AnalysisCore:
         self.prev_segment = None
         self.activity_smooth = 0.0
 
-        if self.debug:
+        if self.visual:
             self.emotion_visual = EmotionDebugCV2(size=520)
 
     # -----------------------------------------------------
@@ -132,6 +128,7 @@ class AnalysisCore:
                 if self.visual:
                     try:
                         self.visual.close()
+                        self.emotion_visual.close()
                     except:
                         pass
                 break
@@ -276,8 +273,8 @@ class AnalysisCore:
                     if aux.name == "danceability classifier":
                         self.danceability = float(results.get("danceable", 0.5))
                         aux_intensity = (
-                                0.5 * activity_energy +
-                                0.5 * self.danceability
+                                0.2 * activity_energy +
+                                0.8 * self.danceability
                         )
                         aux_intensity = clamp(aux_intensity, 0, 1.0)
                         aux_dict["danceable"] = aux_intensity
@@ -309,21 +306,53 @@ class AnalysisCore:
                 valence, arousal, intensity = emotion.compute_emotion(aux_dict)
                 wled_data = emotion.emotion_to_wled(valence, arousal, intensity)
 
-                self.emotion_visual.draw(
-                    genre=top_label,
-                    valence=valence,
-                    arousal=arousal,
-                    intensity=intensity,
-                    emotion_label=emotion.emotion_label(valence, arousal)[0],
-                    effect=wled_data["effect"],
-                    profile=profile
+                if self.visual:
+                    self.emotion_visual.draw(
+                        genre=top_label,
+                        valence=valence,
+                        arousal=arousal,
+                        intensity=intensity,
+                        emotion_label=emotion.emotion_label(valence, arousal)[0],
+                        effect=wled_data["effect"],
+                        profile=profile
+                    )
+
+                path_r = "/WASEssentia/aux/mood/color/r"
+                value_r = wled_data['rgb'][0]
+                self.osc.send(path_r, value_r / 255.0)
+                path_g = "/WASEssentia/aux/mood/color/g"
+                value_g = wled_data['rgb'][1]
+                self.osc.send(path_g, value_g / 255.0)
+                path_b = "/WASEssentia/aux/mood/color/b"
+                value_b = wled_data['rgb'][2]
+                self.osc.send(path_b, value_b / 255.0)
+
+                aux_mood_data = json.dumps({
+                    "valence": round(valence, 3),
+                    "arousal": round(arousal, 3),
+                    "intensity": round(intensity, 3),
+                    "R": value_r,
+                    "G": value_g,
+                    "B": value_b
+                })
+
+                self.osc.send(
+                    "/WASEssentia/aux/mood/data",
+                    aux_mood_data
                 )
 
-                # send_wled_command(wled_data)
+                self.osc.send(
+                    "/WASEssentia/aux/mood/effect",
+                    wled_data["effect"]
+                )
 
+                self.osc.send(
+                    "/WASEssentia/aux/mood/index",
+                    wled_data["index"]
+                )
 
             # --------------------------------------------------
-            # Mood computation
+            # Mood computation (other than AUX)
             # --------------------------------------------------
 
             # --------------------------------------------------
@@ -450,13 +479,6 @@ class AnalysisCore:
 
             if self.debug:
                 print("Final color:", r, g, b)
-
-            # Debug / genre-centric override
-            if self.color1:
-                brightness = max(0.1, min(1.0, activity_energy))
-                saturation = min(1.0, top_conf * 1.5)
-                r, g, b = compute_color(final_hue, saturation, brightness)
-                print('Debug final :', r, g, b)
 
             # Accent color
             accent_r, accent_g, accent_b = self.mood_mapper.accent_color(

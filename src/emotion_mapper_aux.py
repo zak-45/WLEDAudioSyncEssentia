@@ -64,12 +64,13 @@ class EmotionMapperAUX:
 
         label, quadrant = self.emotion_label(valence, arousal)
 
-        print(
-            f"[EMOTION] {label:18s} | "
-            f"V={valence:+.2f} "
-            f"A={arousal:+.2f} | "
-            f"{quadrant}"
-        )
+        if self.debug:
+            print(
+                f"[EMOTION] {label:18s} | "
+                f"V={valence:+.2f} "
+                f"A={arousal:+.2f} | "
+                f"{quadrant}"
+            )
 
         return valence, arousal, intensity
 
@@ -87,7 +88,7 @@ class EmotionMapperAUX:
 
         # --------------------------------------------------
         # EFFECT selection (unchanged)
-        effect, effect_label = self.effects.select_effect(valence, arousal)
+        effect, effect_label, effect_index, _ = self.effects.select_effect(valence, arousal)
 
         # --------------------------------------------------
         # MOTION parameters
@@ -106,6 +107,7 @@ class EmotionMapperAUX:
         return {
             "rgb": (r, g, b),
             "effect": effect,
+            "index": effect_index,
             "speed": speed,
             "intensity": intensity_param,
         }
@@ -163,6 +165,6 @@ class EffectConfig:
 
         for name, entry in self.effects.items():
             if eval(entry["condition"], {}, ctx):
-                return entry["effect"], name
+                return entry["effect"], name, entry["index"], "index"
 
-        return "Solid", "fallback"
+        return "Solid", "fallback", 0, "index"

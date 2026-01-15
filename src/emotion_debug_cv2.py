@@ -3,9 +3,7 @@ import numpy as np
 import math
 from src.emotion_color import emotion_to_rgb, WHITE_RADIUS
 
-
-WINDOW = "Emotion Debug"
-
+WINDOW = "WASEssentia Emotion Visual"
 
 class EmotionDebugCV2:
     def __init__(self, size=540):
@@ -98,18 +96,16 @@ class EmotionDebugCV2:
                         (230, 230, 230), 1)
 
         text(30, f"Genre : {genre}")
-        text(60,  f"Emotion : {emotion_label}")
-        text(85,  f"Effect  : {effect}")
-        text(110,  f"Profile : {profile}")
+        text(60, f"Emotion : {emotion_label}")
+        text(85, f"Effect  : {effect}")
+        text(110, f"Profile : {profile}")
         text(135, f"Valence : {valence:+.2f}")
         text(160, f"Arousal : {arousal:+.2f}")
         text(185, f"Intensity: {intensity:.2f}")
-        text(self.size - 30, f"RGB: {rgb}")
+        text(self.size - 30, f"RGB : {rgb}")
 
         cv2.imshow(WINDOW, img)
         cv2.waitKey(1)
-
-
 
     def _draw_white_radius(self, img):
         r = int(self.radius * WHITE_RADIUS)
@@ -136,3 +132,8 @@ class EmotionDebugCV2:
             (220, 220, 220),
             1
         )
+
+    # --------------------------------------------------
+    @staticmethod
+    def close():
+        cv2.destroyWindow(WINDOW)
