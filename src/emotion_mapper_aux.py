@@ -168,3 +168,41 @@ class EffectConfig:
                 return entry["effect"], name, entry["index"], "index"
 
         return "Solid", "fallback", 0, "index"
+
+
+# -------------------------------------------------
+# STROBE
+#if strobe_ctrl.update(valence, arousal, intensity, now_ms):
+#    effect = "Strobe"
+#else:
+#    effect = normal_effect
+#
+# -------------------------------------------------
+
+class StrobeController:
+    def __init__(self):
+        self.last_arousal = 0.0
+        self.last_time = 0
+        self.active_until = 0
+
+    def update(self, valence, arousal, intensity, now_ms):
+        # Stop strobe if active and expired
+        if now_ms > self.active_until:
+            self.active_until = 0
+
+        # Compute arousal delta
+        delta = arousal - self.last_arousal
+        self.last_arousal = arousal
+
+        # Conditions
+        allow = (
+            arousal > 0.6 and
+            delta > 0.25 and
+            not (valence > 0 and arousal < 0)
+        )
+
+        if allow and self.active_until == 0:
+            self.active_until = now_ms + 180  # ms
+            return True  # START STROBE
+
+        return self.active_until > now_ms  # CONTINUE or OFF

@@ -102,3 +102,11 @@ class RuntimeConfig:
     @property
     def RT_MOOD_LIFT(self):
         return self.cfg["rt_mood"]["rt_mood_lift"]
+
+    @property
+    def RT_MOOD(self):
+        return self.cfg["rt_mood"]["activate"]
+
+    @property
+    def AUX_MOOD(self):
+        return self.cfg["aux_mood"]["activate"]

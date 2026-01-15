@@ -26,11 +26,13 @@ from src.utils import compute_color
 from src.genre_color_profile_loader import load_genre_color_profiles
 from src.emotion_color_mapper import EmotionColorMapper
 
-from src.emotion_mapper_aux import EmotionMapperAUX, clamp
+from src.emotion_mapper_aux import EmotionMapperAUX, clamp, StrobeController
 from src.effect_config_manager import EffectConfigManager
 
 config_mgr = EffectConfigManager("config/presets")
 emotion = EmotionMapperAUX(config_mgr)
+
+strobe_ctrl = StrobeController()
 
 from src.emotion_debug_cv2 import EmotionDebugCV2
 
@@ -58,11 +60,15 @@ class AnalysisCore:
             debug,
             aux,
             activate_buffer,
+            rt_mood,
             rt_mood_lift,
+            aux_mood,
             shutdown_event=None,
     ):
         self.shutdown_event = shutdown_event
+        self.rt_mood = rt_mood
         self.rt_mood_lift = rt_mood_lift
+        self.aux_mood = aux_mood
         self.accent_strength = 0.0
         self.aux = aux
         self.danceability = None
@@ -107,7 +113,7 @@ class AnalysisCore:
         self.last_analysis_time = 0.0
 
         self.genre_profiles, self.default_profile = load_genre_color_profiles(
-            "config/genre_color_profiles.json"
+            root_path("config/genre_color_profiles.json")
         )
 
         self.prev_segment = None
@@ -272,20 +278,22 @@ class AnalysisCore:
 
                     if aux.name == "danceability classifier":
                         self.danceability = float(results.get("danceable", 0.5))
+
+                    if self.aux_mood:
                         aux_intensity = (
                                 0.2 * activity_energy +
                                 0.8 * self.danceability
                         )
                         aux_intensity = clamp(aux_intensity, 0, 1.0)
                         aux_dict["danceable"] = aux_intensity
-                    elif aux.name == "mood aggressive":
-                        aux_dict["aggressive"] = float(results.get("aggressive", 0.5))
-                    elif aux.name == "mood happy":
-                        aux_dict["happy"] = float(results.get("happy", 0.5))
-                    elif aux.name == "mood relaxed":
-                        aux_dict["relaxed"] = float(results.get("relaxed", 0.5))
-                    elif aux.name == "mood sad":
-                        aux_dict["sad"] = float(results.get("sad", 0.5))
+                        if aux.name == "mood aggressive":
+                            aux_dict["aggressive"] = float(results.get("aggressive", 0.5))
+                        elif aux.name == "mood happy":
+                            aux_dict["happy"] = float(results.get("happy", 0.5))
+                        elif aux.name == "mood relaxed":
+                            aux_dict["relaxed"] = float(results.get("relaxed", 0.5))
+                        elif aux.name == "mood sad":
+                            aux_dict["sad"] = float(results.get("sad", 0.5))
 
                     if self.debug:
                         print('_|_')
@@ -298,58 +306,71 @@ class AnalysisCore:
                         path = f"/WASEssentia/aux/{aux.name.replace(' ', '_')}/{label.replace(' ', '_')}"
                         self.osc.send(path, float(value))
 
-                # Update context when known
-                emotion.update_context(
-                    genre=top_label
-                )
+                if self.aux_mood:
+                    # Update context when known
+                    emotion.update_context(
+                        genre=macro_label.lower()
+                    )
+                    if self.debug:
+                        print(f'[PRESET] {emotion.effects.config["_meta"]}')
 
-                valence, arousal, intensity = emotion.compute_emotion(aux_dict)
-                wled_data = emotion.emotion_to_wled(valence, arousal, intensity)
+                    valence, arousal, intensity = emotion.compute_emotion(aux_dict)
+                    wled_data = emotion.emotion_to_wled(valence, arousal, intensity)
 
-                if self.visual:
-                    self.emotion_visual.draw(
-                        genre=top_label,
-                        valence=valence,
-                        arousal=arousal,
-                        intensity=intensity,
-                        emotion_label=emotion.emotion_label(valence, arousal)[0],
-                        effect=wled_data["effect"],
-                        profile=profile
+                    now_ms = time.time() * 1000
+                    if strobe_ctrl.update(valence, arousal, intensity, now_ms):
+                        effect = "Strobe"
+                        print('-----------STROBE----------')
+                    # else:
+                    #    effect = normal_effect
+
+                    if self.visual:
+                        self.emotion_visual.draw(
+                            genre=macro_label,
+                            valence=valence,
+                            arousal=arousal,
+                            intensity=intensity,
+                            emotion_label=emotion.emotion_label(valence, arousal)[0],
+                            effect=wled_data["effect"],
+                            profile=profile
+                        )
+
+                    path_r = "/WASEssentia/aux/mood/color/r"
+                    value_r = wled_data['rgb'][0]
+                    self.osc.send(path_r, value_r / 255.0)
+                    path_g = "/WASEssentia/aux/mood/color/g"
+                    value_g = wled_data['rgb'][1]
+                    self.osc.send(path_g, value_g / 255.0)
+                    path_b = "/WASEssentia/aux/mood/color/b"
+                    value_b = wled_data['rgb'][2]
+                    self.osc.send(path_b, value_b / 255.0)
+
+                    aux_mood_data = json.dumps({
+                        "valence": round(valence, 3),
+                        "arousal": round(arousal, 3),
+                        "intensity": round(intensity, 3),
+                        "R": value_r,
+                        "G": value_g,
+                        "B": value_b
+                    })
+
+                    if self.debug:
+                        print(f"[AUX MOOD DATA] {aux_mood_data}")
+
+                    self.osc.send(
+                        "/WASEssentia/aux/mood/data",
+                        aux_mood_data
                     )
 
-                path_r = "/WASEssentia/aux/mood/color/r"
-                value_r = wled_data['rgb'][0]
-                self.osc.send(path_r, value_r / 255.0)
-                path_g = "/WASEssentia/aux/mood/color/g"
-                value_g = wled_data['rgb'][1]
-                self.osc.send(path_g, value_g / 255.0)
-                path_b = "/WASEssentia/aux/mood/color/b"
-                value_b = wled_data['rgb'][2]
-                self.osc.send(path_b, value_b / 255.0)
+                    self.osc.send(
+                        "/WASEssentia/aux/mood/effect",
+                        wled_data["effect"]
+                    )
 
-                aux_mood_data = json.dumps({
-                    "valence": round(valence, 3),
-                    "arousal": round(arousal, 3),
-                    "intensity": round(intensity, 3),
-                    "R": value_r,
-                    "G": value_g,
-                    "B": value_b
-                })
-
-                self.osc.send(
-                    "/WASEssentia/aux/mood/data",
-                    aux_mood_data
-                )
-
-                self.osc.send(
-                    "/WASEssentia/aux/mood/effect",
-                    wled_data["effect"]
-                )
-
-                self.osc.send(
-                    "/WASEssentia/aux/mood/index",
-                    wled_data["index"]
-                )
+                    self.osc.send(
+                        "/WASEssentia/aux/mood/index",
+                        wled_data["index"]
+                    )
 
             # --------------------------------------------------
             # Mood computation (other than AUX)
@@ -543,72 +564,74 @@ class AnalysisCore:
             if self.debug:
                 print(mood_data)
 
-            # --------------------------------------------------
-            # Mood like RTMood
-            # --------------------------------------------------
-            # --------------------------------------------------
-            # RTMood perceptual expansion
-            # Valence is intentionally conservative (~0.4–0.6),
-            # so we expand contrast ONLY for RTMood mapping.
-            # --------------------------------------------------
+            if self.rt_mood:
 
-            # --------------------------------------------------
-            # RTMood energy protection
-            # RTMood collapses to black at energy == -1
-            # So we keep a perceptual floor
-            # --------------------------------------------------
+                # --------------------------------------------------
+                # Mood like RTMood
+                # --------------------------------------------------
+                # --------------------------------------------------
+                # RTMood perceptual expansion
+                # Valence is intentionally conservative (~0.4–0.6),
+                # so we expand contrast ONLY for RTMood mapping.
+                # --------------------------------------------------
 
-            v = float(valence)
+                # --------------------------------------------------
+                # RTMood energy protection
+                # RTMood collapses to black at energy == -1
+                # So we keep a perceptual floor
+                # --------------------------------------------------
 
-            # expand around neutral (0.5 → 0.0)
-            v_expanded = (0.5 + np.sign(v - 0.5) * abs(v - 0.5) ** 0.6)
-            v_expanded = float(np.clip(v_expanded, 0.0, 1.0))
+                v = float(valence)
 
-            soft_valence = (v_expanded * 2.0) - 1.0
+                # expand around neutral (0.5 → 0.0)
+                v_expanded = (0.5 + np.sign(v - 0.5) * abs(v - 0.5) ** 0.6)
+                v_expanded = float(np.clip(v_expanded, 0.0, 1.0))
 
-            # --------------------------------------------------
-            # RTMood-safe energy mapping
-            # RTMood collapses chroma near ±1
-            # --------------------------------------------------
+                soft_valence = (v_expanded * 2.0) - 1.0
 
-            # map [0,1] → [-1,1]
-            soft_energy = (activity_energy * 2.0) - 1.0
+                # --------------------------------------------------
+                # RTMood-safe energy mapping
+                # RTMood collapses chroma near ±1
+                # --------------------------------------------------
 
-            # perceptual clamp (CRITICAL)
-            SOFT_E_MAX = 0.75
-            SOFT_E_MIN = -0.75
+                # map [0,1] → [-1,1]
+                soft_energy = (activity_energy * 2.0) - 1.0
 
-            soft_energy = float(np.clip(soft_energy, SOFT_E_MIN, SOFT_E_MAX))
+                # perceptual clamp (CRITICAL)
+                SOFT_E_MAX = 0.75
+                SOFT_E_MIN = -0.75
 
-            if self.debug:
-                print(
-                    f"[RTMOOD INPUT] "
-                    f"valence={valence:.3f} "
-                    f"expanded={v_expanded:.3f} "
-                    f"soft_v={soft_valence:.3f} "
-                    f"soft_e={soft_energy:.3f}"
-                )
+                soft_energy = float(np.clip(soft_energy, SOFT_E_MIN, SOFT_E_MAX))
 
-            rtr, rtg, rtb = rt_color_mapper.get_rgb(soft_valence, soft_energy)
+                if self.debug:
+                    print(
+                        f"[RTMOOD INPUT] "
+                        f"valence={valence:.3f} "
+                        f"expanded={v_expanded:.3f} "
+                        f"soft_v={soft_valence:.3f} "
+                        f"soft_e={soft_energy:.3f}"
+                    )
 
-            if self.rt_mood_lift:
-                # optional RTMood luminance lift
-                rt_lift = 0.4 + 0.6 * activity_energy
+                rtr, rtg, rtb = rt_color_mapper.get_rgb(soft_valence, soft_energy)
 
-                rtr = int(rtr * rt_lift)
-                rtg = int(rtg * rt_lift)
-                rtb = int(rtb * rt_lift)
+                if self.rt_mood_lift:
+                    # optional RTMood luminance lift
+                    rt_lift = 0.4 + 0.6 * activity_energy
 
-                rtr = min(255, rtr)
-                rtg = min(255, rtg)
-                rtb = min(255, rtb)
+                    rtr = int(rtr * rt_lift)
+                    rtg = int(rtg * rt_lift)
+                    rtb = int(rtb * rt_lift)
 
-            self.osc.send("/WASEssentia/mood/rt/color/r", rtr / 255.0)
-            self.osc.send("/WASEssentia/mood/rt/color/g", rtg / 255.0)
-            self.osc.send("/WASEssentia/mood/rt/color/b", rtb / 255.0)
+                    rtr = min(255, rtr)
+                    rtg = min(255, rtg)
+                    rtb = min(255, rtb)
 
-            if self.debug:
-                print("RTMood color:", rtr, rtg, rtb)
+                self.osc.send("/WASEssentia/mood/rt/color/r", rtr / 255.0)
+                self.osc.send("/WASEssentia/mood/rt/color/g", rtg / 255.0)
+                self.osc.send("/WASEssentia/mood/rt/color/b", rtb / 255.0)
+
+                if self.debug:
+                    print("RTMood color:", rtr, rtg, rtb)
 
             # --------------------------------------------------
             # Visual debug

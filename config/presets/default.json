@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "name": "default",
+    "description": "Default profile Effects",
+    "version": 1
+  },
   "thresholds": {
     "high_arousal": 0.4,
     "low_arousal": -0.4,

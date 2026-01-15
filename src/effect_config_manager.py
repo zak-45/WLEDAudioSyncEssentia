@@ -1,10 +1,12 @@
 import os
+
+from configmanager import root_path
 from src.emotion_mapper_aux import EffectConfig
 
 
 class EffectConfigManager:
     def __init__(self, config_dir="config"):
-        self.config_dir = config_dir
+        self.config_dir = root_path(config_dir)
         self.cache = {}
 
     def load(self, name):
@@ -45,7 +47,7 @@ class EffectConfigManager:
 
         # ---- BPM ----
         if bpm is not None:
-            if bpm >= 140 and self._exists("club"):
+            if bpm >= 120 and self._exists("club"):
                 return self.load("club")
             if bpm <= 80 and self._exists("ambient"):
                 return self.load("ambient")

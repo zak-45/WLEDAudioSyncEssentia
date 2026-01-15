@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "name": "ambient",
+    "description": "Ambient profile Effects",
+    "version": 1
+  },
   "thresholds": {
     "high_arousal": 0.3,
     "low_arousal": -0.3,

@@ -37,8 +37,13 @@
   },
 
   "rt_mood": {
+    "activate": false,
     "rt_mood_lift": false
-  }
+  },
 
+  "aux_mood": {
+    "activate": true,
+    "preset": "club"
+  }
 
 }
