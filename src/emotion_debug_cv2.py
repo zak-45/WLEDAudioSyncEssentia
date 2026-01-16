@@ -126,7 +126,7 @@ class EmotionDebugCV2:
         cv2.putText(
             img,
             "Neutral zone",
-            (self.center - 50, self.center - r - 10),
+            (self.center - 50, self.center + r + 10),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.45,
             (220, 220, 220),
