@@ -29,7 +29,7 @@ from src.emotion_color_mapper import EmotionColorMapper
 from src.emotion_mapper_aux import EmotionMapperAUX, clamp, StrobeController
 from src.effect_config_manager import EffectConfigManager
 
-config_mgr = EffectConfigManager("config/presets")
+config_mgr = EffectConfigManager(root_path("config/effects"))
 emotion = EmotionMapperAUX(config_mgr)
 
 strobe_ctrl = StrobeController()
@@ -37,7 +37,7 @@ strobe_ctrl = StrobeController()
 from src.emotion_debug_cv2 import EmotionDebugCV2
 
 rt_color_mapper = EmotionColorMapper(
-    mood_image_path="assets/music_color_mood.png",
+    mood_image_path=root_path("assets/music_color_mood.png"),
     smoothing=0.85  # recommended for LEDs
 )
 
@@ -95,8 +95,8 @@ class AnalysisCore:
             self.load_aux()
 
         self.mood_mapper = MoodColorMapper(
-            "models/genre_discogs400-discogs-effnet-1.json",
-            "config/mood_valence.json"
+            root_path("models/genre_discogs400-discogs-effnet-1.json"),
+            root_path("config/mood_valence.json")
         )
 
         self.adaptive = AdaptiveBuffer(
@@ -176,7 +176,7 @@ class AnalysisCore:
             probs = self.clf.classify(segment)
             if probs is None:
                 if self.debug:
-                    print('Prob is None')
+                    print('Prob is None -- check buffer size ???')
                 continue
 
             self.smooth.update(probs)
@@ -326,7 +326,7 @@ class AnalysisCore:
 
                     if self.visual:
                         self.emotion_visual.draw(
-                            genre=macro_label,
+                            genre=top_label,
                             valence=valence,
                             arousal=arousal,
                             intensity=intensity,

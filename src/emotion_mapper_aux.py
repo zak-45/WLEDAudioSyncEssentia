@@ -195,11 +195,7 @@ class StrobeController:
         self.last_arousal = arousal
 
         # Conditions
-        allow = (
-            arousal > 0.6 and
-            delta > 0.25 and
-            not (valence > 0 and arousal < 0)
-        )
+        allow = arousal > 0.6 and delta > 0.25 and (valence <= 0 or arousal >= 0)
 
         if allow and self.active_until == 0:
             self.active_until = now_ms + 180  # ms
