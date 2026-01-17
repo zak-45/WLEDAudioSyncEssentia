@@ -48,6 +48,9 @@ with open(root_path("config/genre_flash_shape.json"), "r") as f:
 models = discover_models(root_path("models"))
 #
 
+PREVIEW_SECONDS = 2.1
+
+
 class AnalysisCore:
     def __init__(
             self,
@@ -91,6 +94,12 @@ class AnalysisCore:
             cfg.SMOOTHING_ALPHA
         )
 
+        # Fast preview genre (reactive)
+        self.preview_smooth = GenreSmoother(
+            self.clf.labels,
+            alpha=0.20
+        )
+
         if self.aux:
             self.load_aux()
 
@@ -110,6 +119,7 @@ class AnalysisCore:
         )
 
         self.buffer = np.zeros(0, dtype=np.float32)
+        self.preview_buffer = np.zeros(0, dtype=np.float32)
         self.last_analysis_time = 0.0
 
         self.genre_profiles, self.default_profile = load_genre_color_profiles(
@@ -156,6 +166,7 @@ class AnalysisCore:
             # --------------------------------------------------
 
             self.buffer = np.concatenate([self.buffer, audio])
+            self.preview_buffer = np.concatenate([self.preview_buffer, audio])
 
             if self.activate_buffer:
                 needed = int(self.cfg.MODEL_SAMPLE_RATE * self.adaptive.current)
@@ -163,9 +174,45 @@ class AnalysisCore:
                 needed = int(self.cfg.MODEL_SAMPLE_RATE * self.cfg.MIN_BUFFER_SECONDS)
 
             max_samples = int(self.cfg.MAX_BUFFER_SECONDS * self.cfg.MODEL_SAMPLE_RATE)
+
             self.buffer = self.buffer[-max_samples:]
 
+            # Preview buffer: short & fast
+            preview_max = int(PREVIEW_SECONDS * self.cfg.MODEL_SAMPLE_RATE)
+            self.preview_buffer = self.preview_buffer[-preview_max:]
+
+            # --------------------------------------------------
+            # FAST PREVIEW GENRE (≈1s latency)
+            # --------------------------------------------------
+
+            preview_macro = None
+            preview_conf = 0.0
+            preview_probs = None
+
+            if len(self.preview_buffer) >= preview_max:
+                preview_segment = self.preview_buffer[-preview_max:]
+                preview_probs = self.clf.classify(preview_segment)
+
+            if preview_probs is not None:
+                self.preview_smooth.update(preview_probs)
+                preview_label, preview_conf = self.preview_smooth.top_n(1)[0]
+                preview_macro = preview_label.split("---")[0]
+
+            if self.debug:
+                print(
+                    "[PREVIEW GENRE]",
+                    preview_macro,
+                    f"conf={preview_conf:.3f}"
+                )
+
+            # OSC: fast preview
+            self.osc.send(
+                "/WASEssentia/genre/preview",
+                preview_macro
+            )
+
             if len(self.buffer) < needed:
+                print(self.buffer.shape, needed)
                 continue
 
             segment = self.buffer[-needed:]
@@ -653,7 +700,10 @@ class AnalysisCore:
             # --------------------------------------------------
             # Advance hop
             # --------------------------------------------------
-            self.buffer = self.buffer[-hop:]
+
+            # Preserve enough history for confirmed classification
+            self.buffer = self.buffer[-max(needed, hop):]
+
 
     # ==================================================
     def _enter_silence(self):
@@ -664,6 +714,9 @@ class AnalysisCore:
         self.adaptive.current = self.cfg.MIN_BUFFER_SECONDS
         self.mood_mapper.reset_valence()
         self.osc.send_silence(0)
+
+        self.preview_buffer = np.zeros(0, dtype=np.float32)
+        self.preview_smooth.reset()
 
         if self.debug:
             print("🔇 SILENCE → analysis reset")
