@@ -30,7 +30,10 @@ def discover_models(models_dir):
         raise RuntimeError(f"Models folder not found: {models_dir}")
 
     files = os.listdir(models_dir)
-    files.remove('discogs-effnet-bs64-1.pb')
+
+    # remove effnet base model
+    if 'discogs-effnet-bs64-1.pb' in files:
+        files.remove('discogs-effnet-bs64-1.pb')
 
     pbs = {f[:-3]: f for f in files if f.endswith(".pb")}
     jsons = {f[:-5]: f for f in files if f.endswith(".json")}

@@ -98,15 +98,10 @@ class RuntimeConfig:
     def DOUBLING_THRESHOLD(self):
         return self.cfg["bpm"]["doubling_threshold"]
 
-    # --- RTMood Lift ---
-    @property
-    def RT_MOOD_LIFT(self):
-        return self.cfg["rt_mood"]["rt_mood_lift"]
-
-    @property
-    def RT_MOOD(self):
-        return self.cfg["rt_mood"]["activate"]
-
     @property
     def AUX_MOOD(self):
         return self.cfg["aux_mood"]["activate"]
+
+    @property
+    def AUX_MOOD_VISUAL(self):
+        return self.cfg["aux_mood"]["visual"]

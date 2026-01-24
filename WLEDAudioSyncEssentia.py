@@ -23,12 +23,14 @@ cfg = RuntimeConfig(root_path("config/audio_runtime.json"))
 
 # import queue
 audio_queue = Queue(maxsize=8)
+mood_audio_queue = Queue(maxsize=8)
 
 # Audio
 DEVICE_INDEX = cfg.DEVICE_INDEX
 AUDIO_DEVICE_RATE = cfg.AUDIO_DEVICE_RATE
 MODEL_SAMPLE_RATE = cfg.MODEL_SAMPLE_RATE
 CHANNELS = cfg.CHANNELS
+
 
 last_beat_time = 0.0
 BEAT_HOLD = 0.15  # seconds, prevents double triggers
@@ -41,6 +43,8 @@ spinner = BeatPrinter()
 # Global shutdown event
 shutdown_event = Event()
 
+#
+mood_analysis_proc = None
 
 def list_devices(p: pyaudio.PyAudio):
     """Lists all available audio input devices."""
@@ -53,6 +57,17 @@ def list_devices(p: pyaudio.PyAudio):
 
 
 def put_on_queue(audio, rms_rt, activity_energy, beat, silent):
+
+    if cfg.AUX_MOOD:
+        try:
+            mood_audio_queue.put_nowait((audio, rms_rt, time.time(), activity_energy, beat, silent))
+        except queue.Full:
+            try:
+                mood_audio_queue.get_nowait()  # drop old
+                mood_audio_queue.put_nowait((audio, rms_rt, time.time(), activity_energy, beat, silent))
+            except queue.Empty:
+                pass
+
     try:
         audio_queue.put_nowait((audio, rms_rt, time.time(), activity_energy, beat, silent))
     except queue.Full:
@@ -114,8 +129,9 @@ def on_audio(audio, rms_rt):
             if bpm < cfg.DOUBLING_THRESHOLD:
                 bpm = bpm * 2
 
+            current_time = time.strftime("%H:%M:%S", time.localtime(now))
             spinner_char = spinner.get_char()
-            sys.stdout.write(f"Beat detected {spinner_char} "
+            sys.stdout.write(f"[{current_time}] Beat detected {spinner_char} "
                              f"bpm: {bpm:.2f}  "
                              f"dB: {level:.2f}  "
                              f"activity_energy: {activity_energy:.2f}\r")
@@ -152,6 +168,13 @@ def cleanup_resources(in_main_audio, in_analysis_proc):
             audio_queue.get_nowait()
     except:
         pass
+
+    if cfg.AUX_MOOD:
+        try:
+            while not mood_audio_queue.empty():
+                mood_audio_queue.get_nowait()
+        except:
+            pass
 
     # Terminate analysis process
     if in_analysis_proc and in_analysis_proc.is_alive():
@@ -379,12 +402,35 @@ if __name__ == "__main__":
                 DEBUG_DATA,
                 VISUAL_DEBUG,
                 AUX,
+                False,
                 shutdown_event,
             ),
             daemon=True
         )
 
         analysis_proc.start()
+
+        if cfg.AUX_MOOD:
+            mood_analysis_proc = Process(
+                target=run_analysis_process,
+                args=(
+                    mood_audio_queue,
+                    root_path("config/audio_runtime.json"),
+                    OSC_IP,
+                    OSC_PORT,
+                    OSC_PATH,
+                    USE_MACRO_GENRES,
+                    MACRO_AGG,
+                    DEBUG_DATA,
+                    False,
+                    False,
+                    True,
+                    shutdown_event,
+                ),
+                daemon=True
+            )
+
+            mood_analysis_proc.start()
 
         # Register signal handlers
         signal.signal(signal.SIGINT, signal_handler)
@@ -401,5 +447,7 @@ if __name__ == "__main__":
             pass
         finally:
             cleanup_resources(main_audio, analysis_proc)
+            if cfg.AUX_MOOD and mood_analysis_proc is not None:
+                cleanup_resources(main_audio, mood_analysis_proc)
 
     print('End WLEDAudioSyncEssentia')

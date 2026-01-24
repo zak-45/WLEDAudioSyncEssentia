@@ -19,6 +19,7 @@ def run_analysis_process(
     debug,
     visual_enabled,
     aux,
+    aux_mood,
     shutdown_event,
 ):
     """
@@ -52,9 +53,7 @@ def run_analysis_process(
         debug=debug,
         aux=aux,
         activate_buffer=cfg.ACTIVATE_BUFFER,
-        rt_mood_lift=cfg.RT_MOOD_LIFT,
-        rt_mood=cfg.RT_MOOD,
-        aux_mood=cfg.AUX_MOOD,
+        aux_mood=aux_mood,
         shutdown_event=shutdown_event
     )
 

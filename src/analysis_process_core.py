@@ -44,12 +44,6 @@ rt_color_mapper = EmotionColorMapper(
 with open(root_path("config/genre_flash_shape.json"), "r") as f:
     GENRE_FLASH_SHAPES = json.load(f)
 
-# fetch all models from folder
-models = discover_models(root_path("models"))
-#
-
-PREVIEW_SECONDS = 2.1
-
 
 class AnalysisCore:
     def __init__(
@@ -63,14 +57,10 @@ class AnalysisCore:
             debug,
             aux,
             activate_buffer,
-            rt_mood,
-            rt_mood_lift,
             aux_mood,
             shutdown_event=None,
     ):
         self.shutdown_event = shutdown_event
-        self.rt_mood = rt_mood
-        self.rt_mood_lift = rt_mood_lift
         self.aux_mood = aux_mood
         self.accent_strength = 0.0
         self.aux = aux
@@ -86,22 +76,29 @@ class AnalysisCore:
         self.macro_agg = macro_agg
         self.is_silent = False
         self.activate_buffer = activate_buffer
+        self.models = []
 
         # -------- MODELS (SAFE HERE) --------
         self.clf = EffnetClassifier()
+
         self.smooth = GenreSmoother(
             self.clf.labels,
             cfg.SMOOTHING_ALPHA
         )
 
-        # Fast preview genre (reactive)
-        self.preview_smooth = GenreSmoother(
-            self.clf.labels,
-            alpha=0.20
-        )
-
-        if self.aux:
+        if self.aux_mood:
+            self.activate_buffer = False
+            self.models = discover_models(root_path("models/mood"))
             self.load_aux()
+            self.smooth.alpha = 0.2
+            if self.cfg.AUX_MOOD_VISUAL:
+                self.emotion_visual = EmotionDebugCV2(size=520)
+
+        elif self.aux:
+
+            self.models = discover_models(root_path("models"))
+            self.load_aux()
+
 
         self.mood_mapper = MoodColorMapper(
             root_path("models/genre_discogs400-discogs-effnet-1.json"),
@@ -119,23 +116,17 @@ class AnalysisCore:
         )
 
         self.buffer = np.zeros(0, dtype=np.float32)
-        self.preview_buffer = np.zeros(0, dtype=np.float32)
-        self.last_analysis_time = 0.0
 
         self.genre_profiles, self.default_profile = load_genre_color_profiles(
             root_path("config/genre_color_profiles.json")
         )
 
-        self.prev_segment = None
-        self.activity_smooth = 0.0
-
-        if self.visual:
-            self.emotion_visual = EmotionDebugCV2(size=520)
-
     # -----------------------------------------------------
 
     def run(self):
         hop = int(self.cfg.MODEL_SAMPLE_RATE * self.cfg.HOP_SECONDS)
+
+        base_prefix = 'MOOD' if self.aux_mood else ''
 
         while True:
             # Check shutdown event
@@ -154,6 +145,9 @@ class AnalysisCore:
             except queue.Empty:
                 continue
 
+            current_time = time.strftime("%H:%M:%S")
+            prefix = f"[{current_time}] {base_prefix}" if base_prefix else f"[{current_time}]"
+
             # --------------------------------------------------
             # Silence detection
             # --------------------------------------------------
@@ -166,7 +160,6 @@ class AnalysisCore:
             # --------------------------------------------------
 
             self.buffer = np.concatenate([self.buffer, audio])
-            self.preview_buffer = np.concatenate([self.preview_buffer, audio])
 
             if self.activate_buffer:
                 needed = int(self.cfg.MODEL_SAMPLE_RATE * self.adaptive.current)
@@ -177,42 +170,7 @@ class AnalysisCore:
 
             self.buffer = self.buffer[-max_samples:]
 
-            # Preview buffer: short & fast
-            preview_max = int(PREVIEW_SECONDS * self.cfg.MODEL_SAMPLE_RATE)
-            self.preview_buffer = self.preview_buffer[-preview_max:]
-
-            # --------------------------------------------------
-            # FAST PREVIEW GENRE (≈1s latency)
-            # --------------------------------------------------
-
-            preview_macro = None
-            preview_conf = 0.0
-            preview_probs = None
-
-            if len(self.preview_buffer) >= preview_max:
-                preview_segment = self.preview_buffer[-preview_max:]
-                preview_probs = self.clf.classify(preview_segment)
-
-            if preview_probs is not None:
-                self.preview_smooth.update(preview_probs)
-                preview_label, preview_conf = self.preview_smooth.top_n(1)[0]
-                preview_macro = preview_label.split("---")[0]
-
-            if self.debug:
-                print(
-                    "[PREVIEW GENRE]",
-                    preview_macro,
-                    f"conf={preview_conf:.3f}"
-                )
-
-            # OSC: fast preview
-            self.osc.send(
-                "/WASEssentia/genre/preview",
-                preview_macro
-            )
-
             if len(self.buffer) < needed:
-                print(self.buffer.shape, needed)
                 continue
 
             segment = self.buffer[-needed:]
@@ -245,7 +203,7 @@ class AnalysisCore:
 
             if self.debug:
                 print(
-                    "[PROFILE DEBUG]",
+                    f"[{prefix} PROFILE DEBUG]",
                     f"macro={macro_label}",
                     f"hue={profile.hue}",
                     f"bright_floor={profile.bright_floor}",
@@ -262,9 +220,9 @@ class AnalysisCore:
             )
 
             if self.debug:
-                print("GENRE TOP5: ",
+                print(f"{prefix} GENRE TOP5: ",
                       " | ".join(f"{g}:{v:.5f}" for g, v in top5))
-                print("GENRE CONF: ", top_conf)
+                print(f"{prefix} GENRE CONF: ", top_conf)
 
             # --------------------------------------------------
             # OSC genre labels
@@ -301,10 +259,10 @@ class AnalysisCore:
                     )
 
                 if self.debug:
-                    print("MACRO TOP5: ",
+                    print(f"{prefix} MACRO TOP5: ",
                           " | ".join(f"{g}:{v:.5f}" for g, v in top5_macro))
 
-                    print("MACRO CONF: ", top_conf_macro)
+                    print(f"{prefix} MACRO CONF: ", top_conf_macro)
 
                 # --------------------------------------------------
                 # OSC macro genre labels
@@ -344,7 +302,7 @@ class AnalysisCore:
 
                     if self.debug:
                         print('_|_')
-                        print(f"AUX {aux.name} =", " | ".join(f"{k}:{v:.5f}" for k, v in results.items()))
+                        print(f"{prefix} AUX {aux.name} =", " | ".join(f"{k}:{v:.5f}" for k, v in results.items()))
 
                     # --------------------------------------------------
                     # OSC aux labels
@@ -359,7 +317,7 @@ class AnalysisCore:
                         genre=macro_label.lower()
                     )
                     if self.debug:
-                        print(f'[PRESET] {emotion.effects.config["_meta"]}')
+                        print(f'[{prefix} PRESET] {emotion.effects.config["_meta"]}')
 
                     valence, arousal, intensity = emotion.compute_emotion(aux_dict)
                     wled_data = emotion.emotion_to_wled(valence, arousal, intensity)
@@ -371,7 +329,7 @@ class AnalysisCore:
                     # else:
                     #    effect = normal_effect
 
-                    if self.visual:
+                    if self.cfg.AUX_MOOD_VISUAL:
                         self.emotion_visual.draw(
                             genre=top_label,
                             valence=valence,
@@ -402,7 +360,7 @@ class AnalysisCore:
                     })
 
                     if self.debug:
-                        print(f"[AUX MOOD DATA] {aux_mood_data}")
+                        print(f"[{prefix} AUX MOOD DATA] {aux_mood_data}")
 
                     self.osc.send(
                         "/WASEssentia/aux/mood/data",
@@ -419,177 +377,188 @@ class AnalysisCore:
                         wled_data["index"]
                     )
 
-            # --------------------------------------------------
-            # Mood computation (other than AUX)
-            # --------------------------------------------------
+            if not self.aux_mood:
+                # --------------------------------------------------
+                # Mood computation (other than AUX)
+                # --------------------------------------------------
 
-            # --------------------------------------------------
-            # Perceptual brightness proxy (for valence only)
-            # --------------------------------------------------
+                # --------------------------------------------------
+                # Perceptual brightness proxy (for valence only)
+                # --------------------------------------------------
 
-            # brightness must NOT be energy-driven
+                # brightness must NOT be energy-driven
 
-            if self.danceability is not None:
-                perceptual_brightness = np.clip(
-                    profile.bright_floor +
-                    0.6 * top_conf +  # genre certainty
-                    0.4 * self.danceability,  # musical feel (if available)
-                    0.0, 1.0
-                )
-            else:
-                perceptual_brightness = np.clip(
-                    profile.bright_floor +
-                    0.5 * top_conf,
-                    0.0, 1.0
-                )
+                if self.danceability is not None:
+                    perceptual_brightness = np.clip(
+                        profile.bright_floor +
+                        0.6 * top_conf +  # genre certainty
+                        0.4 * self.danceability,  # musical feel (if available)
+                        0.0, 1.0
+                    )
+                else:
+                    perceptual_brightness = np.clip(
+                        profile.bright_floor +
+                        0.5 * top_conf,
+                        0.0, 1.0
+                    )
 
-            if self.debug:
-                print(
-                    "[BRIGHTNESS DEBUG]",
-                    f"profile_floor={profile.bright_floor:.3f}",
-                    f"activity_energy={activity_energy:.3f}",
-                    f"computed={perceptual_brightness:.3f}",
-                )
+                if self.debug:
+                    print(
+                        f"[{prefix} BRIGHTNESS DEBUG]",
+                        f"profile_floor={profile.bright_floor:.3f}",
+                        f"activity_energy={activity_energy:.3f}",
+                        f"computed={perceptual_brightness:.3f}",
+                    )
 
-                print(
-                    f"[INPUT DEBUG] "
-                    f"p_bright={perceptual_brightness:.3f} "
-                    f"energy={activity_energy:.3f} "
-                    f"profile_floor={profile.bright_floor:.3f} "
-                    f"boost={profile.energy_boost:.3f}"
-                )
+                    print(
+                        f"[{prefix} INPUT DEBUG] "
+                        f"p_bright={perceptual_brightness:.3f} "
+                        f"energy={activity_energy:.3f} "
+                        f"profile_floor={profile.bright_floor:.3f} "
+                        f"boost={profile.energy_boost:.3f}"
+                    )
 
-            valence = self.mood_mapper.compute_valence(top5, perceptual_brightness, activity_energy, top_conf)
+                valence = self.mood_mapper.compute_valence(top5, perceptual_brightness, activity_energy, top_conf)
 
-            if self.debug:
-                print(
-                    f"VALENCE INPUTS | "
-                    f"p_bright={perceptual_brightness:.3f} "
-                    f"energy={activity_energy:.3f} "
-                    f"conf={top_conf:.3f}"
-                )
+                if self.debug:
+                    print(
+                        f"{prefix} VALENCE INPUTS | "
+                        f"p_bright={perceptual_brightness:.3f} "
+                        f"energy={activity_energy:.3f} "
+                        f"conf={top_conf:.3f}"
+                    )
 
-            emotional_weight = abs(valence - 0.5) * 2.0
+                emotional_weight = abs(valence - 0.5) * 2.0
 
-            emotional_energy = (
-                    0.5 * emotional_weight +  # emotional intensity
-                    0.3 * activity_energy +  # physical support
-                    0.2 * top_conf  # certainty
-            )
-
-            emotional_energy = float(np.clip(emotional_energy, 0.0, 1.0))
-
-            # brightness & saturation
-
-            brightness = (
-                    profile.bright_floor +
-                    emotional_energy * (1.0 - profile.bright_floor)
-            )
-
-            saturation = (
-                    profile.sat_floor +
-                    activity_energy * (1.0 - profile.sat_floor)
-            )
-
-            brightness = float(np.clip(brightness, 0.0, 1.0))
-            saturation = float(np.clip(saturation, 0.0, 1.0))
-
-            # --------------------------------------------------
-            # Mood color
-            # --------------------------------------------------
-
-            mood_hue = self.mood_mapper.mood_to_hue(valence, emotional_energy)
-
-            # --------------------------------------------------
-            # Genre color
-            # --------------------------------------------------
-
-            r, g, b = compute_color(genre_hue, saturation, brightness)
-
-            if self.debug:
-                print("Genre color:", r, g, b)
-
-            self.osc.send("/WASEssentia/genre/color/r", r / 255.0)
-            self.osc.send("/WASEssentia/genre/color/g", g / 255.0)
-            self.osc.send("/WASEssentia/genre/color/b", b / 255.0)
-
-            # --------------------------------------------------
-            # Mood color genre-centric override
-            # --------------------------------------------------
-            #
-            r, g, b = compute_color(mood_hue, saturation, brightness)
-
-            if self.debug:
-                print("Mood color:", r, g, b)
-
-            self.osc.send("/WASEssentia/mood/color/r", r / 255.0)
-            self.osc.send("/WASEssentia/mood/color/g", g / 255.0)
-            self.osc.send("/WASEssentia/mood/color/b", b / 255.0)
-
-            # --------------------------------------------------
-            # Final hue + colors
-            # --------------------------------------------------
-
-            final_hue = self.mood_mapper.fuse_hues(
-                genre_hue=profile.hue,
-                mood_hue=mood_hue,
-                confidence=top_conf * profile.mood_hue_weight
-            )
-
-            # Authoritative production color
-            r, g, b = self.mood_mapper.final_color(
-                genre_hue=genre_hue,
-                mood_hue=mood_hue,
-                confidence=top_conf,
-                activity_energy=activity_energy,
-                emotional_energy=emotional_energy
-            )
-
-            if self.debug:
-                print("Final color:", r, g, b)
-
-            # Accent color
-            accent_r, accent_g, accent_b = self.mood_mapper.accent_color(
-                final_hue=final_hue,
-                activity_energy=activity_energy,
-                confidence=top_conf
-            )
-
-            # Update accent strength once
-            self.update_accent_strength(
-                beat=beat,
-                energy=activity_energy,
-                genre=macro_label
-            )
-
-            # Apply artistic gain
-            self.accent_strength *= profile.accent_gain
-            self.accent_strength = min(1.0, self.accent_strength)
-
-            # always apply flash if there's any remaining strength
-            if self.accent_strength > 0.01:
-                accent_r, accent_g, accent_b = self.mood_mapper.apply_flash(
-                    (accent_r, accent_g, accent_b),
-                    flash_strength=self.accent_strength
+                emotional_energy = (
+                        0.5 * emotional_weight +  # emotional intensity
+                        0.3 * activity_energy +  # physical support
+                        0.2 * top_conf  # certainty
                 )
 
-            if self.debug:
-                print("Accent color:", accent_r, accent_g, accent_b)
+                emotional_energy = float(np.clip(emotional_energy, 0.0, 1.0))
 
-            # --------------------------------------------------
-            # OSC output
-            # --------------------------------------------------
-            self.osc.send("/WASEssentia/final/color/r", r / 255.0)
-            self.osc.send("/WASEssentia/final/color/g", g / 255.0)
-            self.osc.send("/WASEssentia/final/color/b", b / 255.0)
+                # brightness & saturation
 
-            self.osc.send("/WASEssentia/accent/color/r", accent_r / 255.0)
-            self.osc.send("/WASEssentia/accent/color/g", accent_g / 255.0)
-            self.osc.send("/WASEssentia/accent/color/b", accent_b / 255.0)
+                brightness = (
+                        profile.bright_floor +
+                        emotional_energy * (1.0 - profile.bright_floor)
+                )
 
-            self.osc.send(
-                "/WASEssentia/mood/data",
-                json.dumps({
+                saturation = (
+                        profile.sat_floor +
+                        activity_energy * (1.0 - profile.sat_floor)
+                )
+
+                brightness = float(np.clip(brightness, 0.0, 1.0))
+                saturation = float(np.clip(saturation, 0.0, 1.0))
+
+                # --------------------------------------------------
+                # Mood color
+                # --------------------------------------------------
+
+                mood_hue = self.mood_mapper.mood_to_hue(valence, emotional_energy)
+
+                # --------------------------------------------------
+                # Genre color
+                # --------------------------------------------------
+
+                r, g, b = compute_color(genre_hue, saturation, brightness)
+
+                if self.debug:
+                    print(f"{prefix} Genre color:", r, g, b)
+
+                self.osc.send("/WASEssentia/genre/color/r", r / 255.0)
+                self.osc.send("/WASEssentia/genre/color/g", g / 255.0)
+                self.osc.send("/WASEssentia/genre/color/b", b / 255.0)
+
+                # --------------------------------------------------
+                # Mood color genre-centric override
+                # --------------------------------------------------
+                #
+                r, g, b = compute_color(mood_hue, saturation, brightness)
+
+                if self.debug:
+                    print(f"{prefix} Mood color:", r, g, b)
+
+                self.osc.send("/WASEssentia/mood/color/r", r / 255.0)
+                self.osc.send("/WASEssentia/mood/color/g", g / 255.0)
+                self.osc.send("/WASEssentia/mood/color/b", b / 255.0)
+
+                # --------------------------------------------------
+                # Final hue + colors
+                # --------------------------------------------------
+
+                final_hue = self.mood_mapper.fuse_hues(
+                    genre_hue=profile.hue,
+                    mood_hue=mood_hue,
+                    confidence=top_conf * profile.mood_hue_weight
+                )
+
+                # Authoritative production color
+                r, g, b = self.mood_mapper.final_color(
+                    genre_hue=genre_hue,
+                    mood_hue=mood_hue,
+                    confidence=top_conf,
+                    activity_energy=activity_energy,
+                    emotional_energy=emotional_energy
+                )
+
+                if self.debug:
+                    print(f"{prefix} Final color:", r, g, b)
+
+                # Accent color
+                accent_r, accent_g, accent_b = self.mood_mapper.accent_color(
+                    final_hue=final_hue,
+                    activity_energy=activity_energy,
+                    confidence=top_conf
+                )
+
+                # Update accent strength once
+                self.update_accent_strength(
+                    beat=beat,
+                    energy=activity_energy,
+                    genre=macro_label
+                )
+
+                # Apply artistic gain
+                self.accent_strength *= profile.accent_gain
+                self.accent_strength = min(1.0, self.accent_strength)
+
+                # always apply flash if there's any remaining strength
+                if self.accent_strength > 0.01:
+                    accent_r, accent_g, accent_b = self.mood_mapper.apply_flash(
+                        (accent_r, accent_g, accent_b),
+                        flash_strength=self.accent_strength
+                    )
+
+                if self.debug:
+                    print(f"{prefix} Accent color:", accent_r, accent_g, accent_b)
+
+                # --------------------------------------------------
+                # OSC output
+                # --------------------------------------------------
+                self.osc.send("/WASEssentia/final/color/r", r / 255.0)
+                self.osc.send("/WASEssentia/final/color/g", g / 255.0)
+                self.osc.send("/WASEssentia/final/color/b", b / 255.0)
+
+                self.osc.send("/WASEssentia/accent/color/r", accent_r / 255.0)
+                self.osc.send("/WASEssentia/accent/color/g", accent_g / 255.0)
+                self.osc.send("/WASEssentia/accent/color/b", accent_b / 255.0)
+
+                self.osc.send(
+                    "/WASEssentia/mood/data",
+                    json.dumps({
+                        "valence": round(valence, 3),
+                        "activity_energy": round(activity_energy, 3),
+                        "emotional_energy": round(emotional_energy, 3),
+                        "R": r,
+                        "G": g,
+                        "B": b
+                    })
+                )
+
+                mood_data = json.dumps({
                     "valence": round(valence, 3),
                     "activity_energy": round(activity_energy, 3),
                     "emotional_energy": round(emotional_energy, 3),
@@ -597,113 +566,34 @@ class AnalysisCore:
                     "G": g,
                     "B": b
                 })
-            )
-
-            mood_data = json.dumps({
-                "valence": round(valence, 3),
-                "activity_energy": round(activity_energy, 3),
-                "emotional_energy": round(emotional_energy, 3),
-                "R": r,
-                "G": g,
-                "B": b
-            })
-
-            if self.debug:
-                print(mood_data)
-
-            if self.rt_mood:
-
-                # --------------------------------------------------
-                # Mood like RTMood
-                # --------------------------------------------------
-                # --------------------------------------------------
-                # RTMood perceptual expansion
-                # Valence is intentionally conservative (~0.4–0.6),
-                # so we expand contrast ONLY for RTMood mapping.
-                # --------------------------------------------------
-
-                # --------------------------------------------------
-                # RTMood energy protection
-                # RTMood collapses to black at energy == -1
-                # So we keep a perceptual floor
-                # --------------------------------------------------
-
-                v = float(valence)
-
-                # expand around neutral (0.5 → 0.0)
-                v_expanded = (0.5 + np.sign(v - 0.5) * abs(v - 0.5) ** 0.6)
-                v_expanded = float(np.clip(v_expanded, 0.0, 1.0))
-
-                soft_valence = (v_expanded * 2.0) - 1.0
-
-                # --------------------------------------------------
-                # RTMood-safe energy mapping
-                # RTMood collapses chroma near ±1
-                # --------------------------------------------------
-
-                # map [0,1] → [-1,1]
-                soft_energy = (activity_energy * 2.0) - 1.0
-
-                # perceptual clamp (CRITICAL)
-                SOFT_E_MAX = 0.75
-                SOFT_E_MIN = -0.75
-
-                soft_energy = float(np.clip(soft_energy, SOFT_E_MIN, SOFT_E_MAX))
 
                 if self.debug:
-                    print(
-                        f"[RTMOOD INPUT] "
-                        f"valence={valence:.3f} "
-                        f"expanded={v_expanded:.3f} "
-                        f"soft_v={soft_valence:.3f} "
-                        f"soft_e={soft_energy:.3f}"
+                    print(f"[{prefix} MOOD DATA] {mood_data}")
+
+
+                # --------------------------------------------------
+                # Visual debug
+                # --------------------------------------------------
+                if self.visual:
+                    self.visual.update(
+                        genre=macro_label,
+                        genre_hue=genre_hue,
+                        mood_hue=mood_hue,
+                        final_hue=final_hue,
+                        valence=valence,
+                        energy=activity_energy,
+                        rgb=(r, g, b),
+                        rgb_accent=(accent_r, accent_g, accent_b)
                     )
 
-                rtr, rtg, rtb = rt_color_mapper.get_rgb(soft_valence, soft_energy)
-
-                if self.rt_mood_lift:
-                    # optional RTMood luminance lift
-                    rt_lift = 0.4 + 0.6 * activity_energy
-
-                    rtr = int(rtr * rt_lift)
-                    rtg = int(rtg * rt_lift)
-                    rtb = int(rtb * rt_lift)
-
-                    rtr = min(255, rtr)
-                    rtg = min(255, rtg)
-                    rtb = min(255, rtb)
-
-                self.osc.send("/WASEssentia/mood/rt/color/r", rtr / 255.0)
-                self.osc.send("/WASEssentia/mood/rt/color/g", rtg / 255.0)
-                self.osc.send("/WASEssentia/mood/rt/color/b", rtb / 255.0)
-
-                if self.debug:
-                    print("RTMood color:", rtr, rtg, rtb)
-
-            # --------------------------------------------------
-            # Visual debug
-            # --------------------------------------------------
-            if self.visual:
-                self.visual.update(
-                    genre=macro_label,
-                    genre_hue=genre_hue,
-                    mood_hue=mood_hue,
-                    final_hue=final_hue,
-                    valence=valence,
-                    energy=activity_energy,
-                    rgb=(r, g, b),
-                    rgb_accent=(accent_r, accent_g, accent_b)
-                )
-
-                self.visual.render()
+                    self.visual.render()
 
             # --------------------------------------------------
             # Advance hop
             # --------------------------------------------------
 
             # Preserve enough history for confirmed classification
-            self.buffer = self.buffer[-max(needed, hop):]
-
+            self.buffer = self.buffer[-hop:]
 
     # ==================================================
     def _enter_silence(self):
@@ -715,9 +605,6 @@ class AnalysisCore:
         self.mood_mapper.reset_valence()
         self.osc.send_silence(0)
 
-        self.preview_buffer = np.zeros(0, dtype=np.float32)
-        self.preview_smooth.reset()
-
         if self.debug:
             print("🔇 SILENCE → analysis reset")
 
@@ -725,7 +612,7 @@ class AnalysisCore:
     def load_aux(self):
         self.aux_classifiers = []
         # load models and set them to list for type AUX
-        for mod in models:
+        for mod in self.models:
             if mod["type"] == "genre":
 
                 if self.debug:
@@ -733,13 +620,12 @@ class AnalysisCore:
 
             else:
 
-                if self.aux:
-                    self.aux_classifiers.append(
-                        AuxClassifier(mod["name"], mod["pb"], mod["json"], mod["output_name"], agg=self.macro_agg)
-                    )
+                self.aux_classifiers.append(
+                    AuxClassifier(mod["name"], mod["pb"], mod["json"], mod["output_name"], agg=self.macro_agg)
+                )
 
-                    if self.debug:
-                        print(f"🎛 Aux model loaded: {mod['name']}")
+                if self.debug:
+                    print(f"🎛 Aux model loaded: {mod['name']}")
 
     # ==================================================
     def update_accent_strength(self, beat, energy, genre):
