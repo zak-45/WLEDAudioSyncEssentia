@@ -43,8 +43,12 @@ spinner = BeatPrinter()
 # Global shutdown event
 shutdown_event = Event()
 
+# Global silent event
+silent_event = Event()
+
 #
 mood_analysis_proc = None
+analysis_proc = None
 
 def list_devices(p: pyaudio.PyAudio):
     """Lists all available audio input devices."""
@@ -100,6 +104,7 @@ def on_audio(audio, rms_rt):
     if rms_rt < cfg.MIN_RMS:
         if not is_silent and (now - last_non_silent_time) >= cfg.SILENCE_TIMEOUT:
             is_silent = True
+            silent_event.set()
             # put on queue so analysis process core know we are in silent phase
             put_on_queue(audio, rms_rt, 0, False, is_silent)
 
@@ -107,6 +112,7 @@ def on_audio(audio, rms_rt):
 
         if is_silent:
             osc.send_silence(1)
+            silent_event.clear()
             if DEBUG_DATA:
                 print("🎵 AUDIO RESUMED")
 
@@ -389,26 +395,28 @@ if __name__ == "__main__":
 
         rtp = RealTimeProcess(cfg, DEBUG_DATA, SHOW_ACTIVITY)
 
-        analysis_proc = Process(
-            target=run_analysis_process,
-            args=(
-                audio_queue,
-                root_path("config/audio_runtime.json"),
-                OSC_IP,
-                OSC_PORT,
-                OSC_PATH,
-                USE_MACRO_GENRES,
-                MACRO_AGG,
-                DEBUG_DATA,
-                VISUAL_DEBUG,
-                AUX,
-                False,
-                shutdown_event,
-            ),
-            daemon=True
-        )
+        if cfg.GENRE:
+            analysis_proc = Process(
+                target=run_analysis_process,
+                args=(
+                    audio_queue,
+                    root_path("config/audio_runtime.json"),
+                    OSC_IP,
+                    OSC_PORT,
+                    OSC_PATH,
+                    USE_MACRO_GENRES,
+                    MACRO_AGG,
+                    DEBUG_DATA,
+                    VISUAL_DEBUG,
+                    AUX,
+                    False,
+                    shutdown_event,
+                    silent_event,
+                ),
+                daemon=True
+            )
 
-        analysis_proc.start()
+            analysis_proc.start()
 
         if cfg.AUX_MOOD:
             mood_analysis_proc = Process(
@@ -426,6 +434,7 @@ if __name__ == "__main__":
                     False,
                     True,
                     shutdown_event,
+                    silent_event,
                 ),
                 daemon=True
             )
@@ -446,7 +455,8 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             pass
         finally:
-            cleanup_resources(main_audio, analysis_proc)
+            if cfg.GENRE and analysis_proc is not None:
+                cleanup_resources(main_audio, analysis_proc)
             if cfg.AUX_MOOD and mood_analysis_proc is not None:
                 cleanup_resources(main_audio, mood_analysis_proc)
 

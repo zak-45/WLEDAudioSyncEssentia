@@ -14,18 +14,35 @@ from src.genre_labels_load import load_genre_labels
 
 class EffnetClassifier:
     def __init__(self):
+
+        # -------------------------------------------------
+        # Model I/O names (DO NOT CHANGE)
+        # -------------------------------------------------
+        self.input_layer_ed = "serving_default_melspectrogram"
+        self.output_layer_ed = "PartitionedCall:1"
+
+        self.input_layer_cls = "serving_default_model_Placeholder"
+        self.output_layer_cls = "PartitionedCall"
+
+
         self.effnet = TensorflowPredictEffnetDiscogs(
-            graphFilename=f"models/discogs-effnet-bs64-1.pb",
-            output="PartitionedCall:1"
+            graphFilename="models/discogs-effnet-bs1-1.pb",
+            input=self.input_layer_ed,
+            output=self.output_layer_ed,
+            batchSize=1
         )
 
         self.classifier = TensorflowPredict2D(
             graphFilename="models/genre_discogs400-discogs-effnet-1.pb",
-            input="serving_default_model_Placeholder",
-            output="PartitionedCall:0",
+            input=self.input_layer_cls,
+            output=self.output_layer_cls,
+            dimensions=1280     # EffNet embedding size
         )
 
-        # LOAD LABELS FROM JSON (THIS IS THE KEY FIX)
+        # -------------------------------------------------
+        # Labels
+        # -------------------------------------------------
+        # LOAD LABELS FROM JSON
         self.labels = load_genre_labels(
             "models/genre_discogs400-discogs-effnet-1.json"
         )

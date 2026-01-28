@@ -21,7 +21,15 @@
     "confidence_threshold": 0.35,
     "stability_frames": 3,
 
-    "activate": true
+    "activate": false
+  },
+
+  "ring_buffer": {
+    "capacity_seconds": 4.2,
+    "analysis_hop_seconds": 0.8,
+    "effnet_min_seconds": 2.1,
+
+    "activate": false
   },
 
   "activity_energy": {
@@ -33,18 +41,17 @@
   },
 
   "bpm": {
-    "doubling_threshold": 110
-  },
-
-  "rt_mood": {
-    "activate": false,
-    "rt_mood_lift": false
+    "doubling_threshold": 100
   },
 
   "aux_mood": {
     "activate": true,
     "preset": "club",
     "visual": true
-  }
+  },
 
+  "genre": {
+    "activate": false
+  }
 }
+

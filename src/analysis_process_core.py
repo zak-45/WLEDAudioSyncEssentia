@@ -24,7 +24,8 @@ from src.mood_color_mapper import MoodColorMapper
 from src.adaptive_buffer import AdaptiveBuffer
 from src.utils import compute_color
 from src.genre_color_profile_loader import load_genre_color_profiles
-from src.emotion_color_mapper import EmotionColorMapper
+
+from src.ring_buffer import RingBuffer
 
 from src.emotion_mapper_aux import EmotionMapperAUX, clamp, StrobeController
 from src.effect_config_manager import EffectConfigManager
@@ -35,11 +36,6 @@ emotion = EmotionMapperAUX(config_mgr)
 strobe_ctrl = StrobeController()
 
 from src.emotion_debug_cv2 import EmotionDebugCV2
-
-rt_color_mapper = EmotionColorMapper(
-    mood_image_path=root_path("assets/music_color_mood.png"),
-    smoothing=0.85  # recommended for LEDs
-)
 
 with open(root_path("config/genre_flash_shape.json"), "r") as f:
     GENRE_FLASH_SHAPES = json.load(f)
@@ -59,8 +55,10 @@ class AnalysisCore:
             activate_buffer,
             aux_mood,
             shutdown_event=None,
+            silent_event=None,
     ):
         self.shutdown_event = shutdown_event
+        self.silent_event = silent_event
         self.aux_mood = aux_mood
         self.accent_strength = 0.0
         self.aux = aux
@@ -87,7 +85,6 @@ class AnalysisCore:
         )
 
         if self.aux_mood:
-            self.activate_buffer = False
             self.models = discover_models(root_path("models/mood"))
             self.load_aux()
             self.smooth.alpha = 0.2
@@ -117,6 +114,20 @@ class AnalysisCore:
 
         self.buffer = np.zeros(0, dtype=np.float32)
 
+        self.ring_buffer = RingBuffer(
+            capacity_seconds=cfg.RING_BUFFER_CAPACITY,
+            sample_rate=cfg.MODEL_SAMPLE_RATE,
+            min_analysis_seconds=cfg.EFFNET_MIN_DURATION,
+            hop_seconds=cfg.RING_BUFFER_HOP
+        )
+
+        self.fast_ring_buffer = RingBuffer(
+            capacity_seconds=2.1,
+            sample_rate=cfg.MODEL_SAMPLE_RATE,
+            min_analysis_seconds=cfg.EFFNET_MIN_DURATION,
+            hop_seconds=0.2
+        )
+
         self.genre_profiles, self.default_profile = load_genre_color_profiles(
             root_path("config/genre_color_profiles.json")
         )
@@ -124,9 +135,19 @@ class AnalysisCore:
     # -----------------------------------------------------
 
     def run(self):
-        hop = int(self.cfg.MODEL_SAMPLE_RATE * self.cfg.HOP_SECONDS)
 
+        model_rate = self.cfg.MODEL_SAMPLE_RATE
+
+        hop = int(model_rate * self.cfg.HOP_SECONDS)
         base_prefix = 'MOOD' if self.aux_mood else ''
+        needed_seconds = self.cfg.EFFNET_MIN_DURATION
+        use_ring_buffer = self.cfg.RING_BUFFER_ACTIVATE
+
+        adaptive_max_samples = int(self.cfg.MAX_BUFFER_SECONDS * model_rate)
+        aux_mood_visual = self.cfg.AUX_MOOD_VISUAL
+
+        if not self.activate_buffer and not use_ring_buffer:
+            self.smooth.alpha = 0.0
 
         while True:
             # Check shutdown event
@@ -151,29 +172,68 @@ class AnalysisCore:
             # --------------------------------------------------
             # Silence detection
             # --------------------------------------------------
-            if is_silent:
+            if self.silent_event.is_set() or is_silent:
                 self._enter_silence()
                 continue
 
             # --------------------------------------------------
-            # ADAPTIVE GENRE BUFFER
+            # Buffer selection
             # --------------------------------------------------
 
-            self.buffer = np.concatenate([self.buffer, audio])
+            if use_ring_buffer:
+                # ========================================
+                # Ring Buffer
+                # ========================================
+                # add audio data to buffer
+                self.ring_buffer.append(audio)
 
-            if self.activate_buffer:
-                needed = int(self.cfg.MODEL_SAMPLE_RATE * self.adaptive.current)
+                # enough data to analyze ?
+                if not self.ring_buffer.should_analyze():
+                    # not enough
+                    continue
+
+                # choose data to analyze
+                segment = self.ring_buffer.get_analysis_segment(needed_seconds)
+
+                if segment is None:
+                    if self.debug:
+                        print(f'{prefix} Segment is None -- waiting for more data')
+                    continue
+
+            elif self.activate_buffer:
+
+                # --------------------------------------------------
+                # ADAPTIVE GENRE BUFFER
+                # --------------------------------------------------
+
+                self.buffer = np.concatenate([self.buffer, audio])
+
+                adaptive_needed = int(model_rate * self.adaptive.current)
+
+                if len(self.buffer) < adaptive_needed:
+                    continue
+
+                segment = self.buffer[-adaptive_needed:]
+
             else:
-                needed = int(self.cfg.MODEL_SAMPLE_RATE * self.cfg.MIN_BUFFER_SECONDS)
+                # --------------------------------------------------
+                # FAST DEFAULT BUFFER
+                # --------------------------------------------------
+                # add audio data to buffer
+                self.fast_ring_buffer.append(audio)
 
-            max_samples = int(self.cfg.MAX_BUFFER_SECONDS * self.cfg.MODEL_SAMPLE_RATE)
+                # enough data to analyze ?
+                if not self.fast_ring_buffer.should_analyze():
+                    # not enough
+                    continue
 
-            self.buffer = self.buffer[-max_samples:]
+                # choose data to analyze
+                segment = self.fast_ring_buffer.get_analysis_segment(needed_seconds)
 
-            if len(self.buffer) < needed:
-                continue
-
-            segment = self.buffer[-needed:]
+                if segment is None:
+                    if self.debug:
+                        print(f'{prefix} Segment is None -- waiting for more data')
+                    continue
 
             # --------------------------------------------------
             # Genre classification
@@ -191,7 +251,7 @@ class AnalysisCore:
             macro_label = top_label.split("---")[0]
 
             # adapt buffer size if not use macro genre
-            if not self.use_macro and self.activate_buffer:
+            if not self.use_macro and self.activate_buffer and not use_ring_buffer:
                 self.adaptive.update(
                     top_label=top_label,
                     confidence=top_conf,
@@ -219,16 +279,17 @@ class AnalysisCore:
                 0.0, 1.0
             )
 
-            if self.debug:
-                print(f"{prefix} GENRE TOP5: ",
-                      " | ".join(f"{g}:{v:.5f}" for g, v in top5))
-                print(f"{prefix} GENRE CONF: ", top_conf)
+
+            print(f"{prefix} GENRE TOP5: ",
+                  " | ".join(f"{g}:{v:.5f}" for g, v in top5))
+            print(f"{prefix} GENRE CONF: ", top_conf)
 
             # --------------------------------------------------
             # OSC genre labels
             # --------------------------------------------------
+            path = "/WASEssentia/genre/top" if self.aux_mood else "/WASEssentia/genre/mood_top"
             for i, (label, _) in enumerate(top5):
-                self.osc.send(f"/WASEssentia/genre/top{i}", label)
+                self.osc.send(f"{path}{i}", label)
 
             # --------------------------------------------------
             # Macro genres
@@ -251,7 +312,7 @@ class AnalysisCore:
                 top_label_macro, top_conf_macro = top5_macro[0]
 
                 # update buffer size
-                if self.activate_buffer:
+                if self.activate_buffer and not use_ring_buffer:
                     self.adaptive.update(
                         top_label=top_label_macro,
                         confidence=top_conf_macro,
@@ -267,8 +328,9 @@ class AnalysisCore:
                 # --------------------------------------------------
                 # OSC macro genre labels
                 # --------------------------------------------------
+                path = "/WASEssentia/genre/macro_top" if self.aux_mood else "/WASEssentia/genre/mood_macro_top"
                 for i, (label, _) in enumerate(top5_macro):
-                    self.osc.send(f"/WASEssentia/genre/macro_top{i}", label)
+                    self.osc.send(f"{path}{i}", label)
 
             # --------------------------------------------------
             # AUX classifiers
@@ -329,7 +391,7 @@ class AnalysisCore:
                     # else:
                     #    effect = normal_effect
 
-                    if self.cfg.AUX_MOOD_VISUAL:
+                    if aux_mood_visual:
                         self.emotion_visual.draw(
                             genre=top_label,
                             valence=valence,
@@ -591,19 +653,32 @@ class AnalysisCore:
             # --------------------------------------------------
             # Advance hop
             # --------------------------------------------------
-
-            # Preserve enough history for confirmed classification
-            self.buffer = self.buffer[-hop:]
+            if not use_ring_buffer:
+                if self.activate_buffer:
+                    # Preserve enough history for confirmed classification
+                    self.buffer = self.buffer[-hop:]
+                self.buffer = self.buffer[-adaptive_max_samples:]
 
     # ==================================================
     def _enter_silence(self):
         self.is_silent = True
+
+        while True:
+            try:
+                # Non-blocking get
+                audio, rms_rt, ts, activity_energy, beat, is_silent = self.audio_queue.get_nowait()
+            except queue.Empty:
+                break
+
         self.buffer = np.zeros(0, dtype=np.float32)
+
         self.smooth.reset()
         self.adaptive.reset()
         self.adaptive.current = self.cfg.MIN_BUFFER_SECONDS
         self.mood_mapper.reset_valence()
         self.osc.send_silence(0)
+
+        self.ring_buffer.reset()
 
         if self.debug:
             print("🔇 SILENCE → analysis reset")

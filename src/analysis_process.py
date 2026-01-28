@@ -21,6 +21,7 @@ def run_analysis_process(
     aux,
     aux_mood,
     shutdown_event,
+    silent_event,
 ):
     """
     Windows-safe multiprocessing entry point.
@@ -32,6 +33,8 @@ def run_analysis_process(
     from src.osc_sender import OSCSender
     from src.visual_debug import VisualDebugOverlay
     from src.analysis_process_core import AnalysisCore
+
+    #import xtra.tracetool.tracetool
 
     cfg = RuntimeConfig(cfg_path)
 
@@ -54,7 +57,8 @@ def run_analysis_process(
         aux=aux,
         activate_buffer=cfg.ACTIVATE_BUFFER,
         aux_mood=aux_mood,
-        shutdown_event=shutdown_event
+        shutdown_event=shutdown_event,
+        silent_event=silent_event
     )
 
     print("🧠 Analysis process ready")

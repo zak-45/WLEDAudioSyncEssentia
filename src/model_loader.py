@@ -31,9 +31,12 @@ def discover_models(models_dir):
 
     files = os.listdir(models_dir)
 
-    # remove effnet base model
+    # remove effnet base model 64 batch size
     if 'discogs-effnet-bs64-1.pb' in files:
         files.remove('discogs-effnet-bs64-1.pb')
+    # remove effnet base model 1 batch size
+    if 'discogs-effnet-bs1-1.pb' in files:
+        files.remove('discogs-effnet-bs1-1.pb')
 
     pbs = {f[:-3]: f for f in files if f.endswith(".pb")}
     jsons = {f[:-5]: f for f in files if f.endswith(".json")}

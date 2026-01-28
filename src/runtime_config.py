@@ -105,3 +105,30 @@ class RuntimeConfig:
     @property
     def AUX_MOOD_VISUAL(self):
         return self.cfg["aux_mood"]["visual"]
+
+    # --- Ring Buffer (nouveau) ---
+    @property
+    def RING_BUFFER_CAPACITY(self):
+        """Capacité totale du ring buffer en secondes"""
+        return self.cfg.get("ring_buffer", {}).get("capacity_seconds", 10.0)
+
+    @property
+    def RING_BUFFER_HOP(self):
+        """Intervalle entre analyses en secondes"""
+        return self.cfg.get("ring_buffer", {}).get("analysis_hop_seconds", 1.0)
+
+    @property
+    def RING_BUFFER_ACTIVATE(self):
+        """Activate ring buffer"""
+        return self.cfg.get("ring_buffer", {}).get("activate", False)
+
+    @property
+    def EFFNET_MIN_DURATION(self):
+        """Durée minimale requise par Effnet en secondes"""
+        return self.cfg.get("ring_buffer", {}).get("effnet_min_seconds", 2.1)
+
+
+    @property
+    def GENRE(self):
+        """Activate genre detection process"""
+        return self.cfg.get("genre", {}).get("activate", False)
