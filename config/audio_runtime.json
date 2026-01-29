@@ -26,7 +26,7 @@
 
   "ring_buffer": {
     "capacity_seconds": 4.2,
-    "analysis_hop_seconds": 0.8,
+    "analysis_hop_seconds": 0.4,
     "effnet_min_seconds": 2.1,
 
     "activate": false
@@ -45,13 +45,13 @@
   },
 
   "aux_mood": {
-    "activate": true,
+    "activate": false,
     "preset": "club",
-    "visual": true
+    "visual": false
   },
 
   "genre": {
-    "activate": false
+    "activate": true
   }
 }
 

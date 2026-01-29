@@ -73,7 +73,7 @@ class AnalysisCore:
         self.use_macro = use_macro
         self.macro_agg = macro_agg
         self.is_silent = False
-        self.activate_buffer = activate_buffer
+        self.adaptive_buffer = activate_buffer
         self.models = []
 
         # -------- MODELS (SAFE HERE) --------
@@ -102,6 +102,8 @@ class AnalysisCore:
             root_path("config/mood_valence.json")
         )
 
+        self.buffer = np.zeros(0, dtype=np.float32)
+
         self.adaptive = AdaptiveBuffer(
             cfg.MIN_BUFFER_SECONDS,
             cfg.MAX_BUFFER_SECONDS,
@@ -111,8 +113,6 @@ class AnalysisCore:
             cfg.BUFFER_GROWTH_RATE,
             cfg.BUFFER_SHRINK_RATE,
         )
-
-        self.buffer = np.zeros(0, dtype=np.float32)
 
         self.ring_buffer = RingBuffer(
             capacity_seconds=cfg.RING_BUFFER_CAPACITY,
@@ -146,10 +146,14 @@ class AnalysisCore:
         adaptive_max_samples = int(self.cfg.MAX_BUFFER_SECONDS * model_rate)
         aux_mood_visual = self.cfg.AUX_MOOD_VISUAL
 
-        if not self.activate_buffer and not use_ring_buffer:
+        if not self.adaptive_buffer and not use_ring_buffer:
             self.smooth.alpha = 0.0
 
+        if use_ring_buffer:
+            self.adaptive_buffer = False
+
         while True:
+
             # Check shutdown event
             if self.shutdown_event and self.shutdown_event.is_set():
                 print("🛑 Analysis process shutting down...")
@@ -160,6 +164,10 @@ class AnalysisCore:
                     except:
                         pass
                 break
+
+            if self.silent_event and self.silent_event.is_set():
+                self._enter_silence()
+                continue
 
             try:
                 audio, rms_rt, ts, activity_energy, beat, is_silent = self.audio_queue.get(timeout=0.1)
@@ -172,7 +180,7 @@ class AnalysisCore:
             # --------------------------------------------------
             # Silence detection
             # --------------------------------------------------
-            if self.silent_event.is_set() or is_silent:
+            if is_silent:
                 self._enter_silence()
                 continue
 
@@ -200,7 +208,7 @@ class AnalysisCore:
                         print(f'{prefix} Segment is None -- waiting for more data')
                     continue
 
-            elif self.activate_buffer:
+            elif self.adaptive_buffer:
 
                 # --------------------------------------------------
                 # ADAPTIVE GENRE BUFFER
@@ -216,6 +224,7 @@ class AnalysisCore:
                 segment = self.buffer[-adaptive_needed:]
 
             else:
+
                 # --------------------------------------------------
                 # FAST DEFAULT BUFFER
                 # --------------------------------------------------
@@ -251,7 +260,7 @@ class AnalysisCore:
             macro_label = top_label.split("---")[0]
 
             # adapt buffer size if not use macro genre
-            if not self.use_macro and self.activate_buffer and not use_ring_buffer:
+            if not self.use_macro and self.adaptive_buffer:
                 self.adaptive.update(
                     top_label=top_label,
                     confidence=top_conf,
@@ -279,15 +288,15 @@ class AnalysisCore:
                 0.0, 1.0
             )
 
-
-            print(f"{prefix} GENRE TOP5: ",
-                  " | ".join(f"{g}:{v:.5f}" for g, v in top5))
-            print(f"{prefix} GENRE CONF: ", top_conf)
+            if self.debug:
+                print(f"{prefix} GENRE TOP5: ",
+                      " | ".join(f"{g}:{v:.5f}" for g, v in top5))
+                print(f"{prefix} GENRE CONF: ", top_conf)
 
             # --------------------------------------------------
             # OSC genre labels
             # --------------------------------------------------
-            path = "/WASEssentia/genre/top" if self.aux_mood else "/WASEssentia/genre/mood_top"
+            path = "/WASEssentia/genre/mood_top" if self.aux_mood else "/WASEssentia/genre/top"
             for i, (label, _) in enumerate(top5):
                 self.osc.send(f"{path}{i}", label)
 
@@ -312,7 +321,7 @@ class AnalysisCore:
                 top_label_macro, top_conf_macro = top5_macro[0]
 
                 # update buffer size
-                if self.activate_buffer and not use_ring_buffer:
+                if self.adaptive_buffer:
                     self.adaptive.update(
                         top_label=top_label_macro,
                         confidence=top_conf_macro,
@@ -654,7 +663,7 @@ class AnalysisCore:
             # Advance hop
             # --------------------------------------------------
             if not use_ring_buffer:
-                if self.activate_buffer:
+                if self.adaptive_buffer:
                     # Preserve enough history for confirmed classification
                     self.buffer = self.buffer[-hop:]
                 self.buffer = self.buffer[-adaptive_max_samples:]
@@ -662,6 +671,7 @@ class AnalysisCore:
     # ==================================================
     def _enter_silence(self):
         self.is_silent = True
+        self.silent_event.clear()
 
         while True:
             try:

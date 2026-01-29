@@ -113,7 +113,7 @@ def on_audio(audio, rms_rt):
         if is_silent:
             osc.send_silence(1)
             silent_event.clear()
-            if DEBUG_DATA:
+            if DEBUG_DATA and not SILENT:
                 print("🎵 AUDIO RESUMED")
 
         last_non_silent_time = now
@@ -127,6 +127,9 @@ def on_audio(audio, rms_rt):
         # calculate activity energy
         activity_energy = rtp.run(audio)
 
+        # put on queue anyway
+        put_on_queue(audio, rms_rt, activity_energy, beat, is_silent)
+
         # beat detected
         if beat and (now - last_beat_time) > BEAT_HOLD:
 
@@ -137,17 +140,17 @@ def on_audio(audio, rms_rt):
 
             current_time = time.strftime("%H:%M:%S", time.localtime(now))
             spinner_char = spinner.get_char()
-            sys.stdout.write(f"[{current_time}] Beat detected {spinner_char} "
-                             f"bpm: {bpm:.2f}  "
-                             f"dB: {level:.2f}  "
-                             f"activity_energy: {activity_energy:.2f}\r")
+
+            if not SILENT:
+                sys.stdout.write(f"[{current_time}] Beat detected {spinner_char} "
+                                 f"bpm: {bpm:.2f}  "
+                                 f"dB: {level:.2f}  "
+                                 f"activity_energy: {activity_energy:.2f}\r")
+
             osc.send('/WASEssentia/audio/beat', spinner_char)
             osc.send('/WASEssentia/audio/bpm', bpm)
             osc.send('/WASEssentia/audio/dB', level)
             osc.send('/WASEssentia/audio/activity_energy', activity_energy)
-
-        # put on queue anyway
-        put_on_queue(audio, rms_rt, activity_energy, beat, is_silent)
 
 
 def cleanup_resources(in_main_audio, in_analysis_proc):
@@ -299,6 +302,12 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--silent",
+        action="store_true",
+        help="No print anything"
+    )
+
+    parser.add_argument(
         "--show_activity",
         action="store_true",
         help="If present, Print activity_energy values"
@@ -332,6 +341,11 @@ if __name__ == "__main__":
         MACRO_AGG = args.macro_agg
 
         AUX = args.aux
+
+        SILENT = args.silent
+
+        if SILENT:
+            DEBUG_DATA = False
 
         # OSC Sender
         osc = OSCSender(
