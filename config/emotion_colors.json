@@ -9,5 +9,10 @@
     "joy":     [255, 255,   0],
     "calm":    [0,   255,   0],
     "sadness": [0,     0, 255]
+  },
+
+  "custom": {
+    "mood_only": false,
+    "pure_color": true
   }
 }

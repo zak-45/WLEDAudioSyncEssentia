@@ -18,6 +18,11 @@ DEFAULT_CONFIG = {
         "joy":     [255, 255,   0],
         "calm":    [0,   255,   0],
         "sadness": [0,     0, 255]
+    },
+
+    "custom": {
+        "mood_only": False,
+        "pure_color": True
     }
 }
 
@@ -29,12 +34,7 @@ def load_emotion_color_config(path="config/emotion_colors.json"):
     with open(path, "r") as f:
         cfg = json.load(f)
 
-    # Merge with defaults (safety)
-    out = DEFAULT_CONFIG.copy()
-    out["white_center"].update(cfg.get("white_center", {}))
-    out["emotions"].update(cfg.get("emotions", {}))
-
-    return out
+    return cfg
 
 
 _CONFIG = load_emotion_color_config()
@@ -47,6 +47,8 @@ JOY_RGB     = tuple(_CONFIG["emotions"]["joy"])
 CALM_RGB    = tuple(_CONFIG["emotions"]["calm"])
 SADNESS_RGB = tuple(_CONFIG["emotions"]["sadness"])
 
+MOOD_ONLY   = bool(_CONFIG["custom"]["mood_only"])
+PURE_COLOR  = bool(_CONFIG["custom"]["pure_color"])
 
 # --------------------------------------------------
 # Utilities
@@ -71,16 +73,33 @@ def _lerp(c1, c2, t):
 def emotion_to_rgb(valence, arousal, intensity=1.0):
     """
     Emotion → RGB using JSON-configured colors.
+    mood_only : if True, ignore white center and intensity, return pure mood color
+    pure_color : if true provide defined colors only
 
     valence   ∈ [-1, 1]
     arousal   ∈ [-1, 1]
     intensity ∈ [0, 1]
+
     """
 
     # Clamp inputs
     valence   = _clamp(valence, -1.0, 1.0)
     arousal   = _clamp(arousal, -1.0, 1.0)
     intensity = _clamp(intensity, 0.0, 1.0)
+
+
+    if PURE_COLOR:
+        if arousal >= 0:
+            if valence >= 0:
+                return JOY_RGB
+            else:
+                return ANGER_RGB
+        else:
+            if valence >= 0:
+                return CALM_RGB
+            else:
+                return SADNESS_RGB
+
 
     # --------------------------------------------------
     # 1. Emotion corner interpolation
@@ -90,6 +109,9 @@ def emotion_to_rgb(valence, arousal, intensity=1.0):
     top    = _lerp(ANGER_RGB, JOY_RGB, x)
     bottom = _lerp(SADNESS_RGB, CALM_RGB, x)
     emotion_rgb = _lerp(bottom, top, y)
+
+    if MOOD_ONLY:
+        return emotion_rgb
 
     # --------------------------------------------------
     # 2. White center blending
