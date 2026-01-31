@@ -15,7 +15,7 @@ class VisualDebugOverlay:
     def __init__(self, width=420, height=260):
         self.width = width
         self.height = height
-        self.window_name = "WLEDAudioSyncEssentia Color Visual"
+        self.window_name = "WASEssentia Color Visual"
 
         self.lock = threading.Lock()
         self.last_frame = None

@@ -22,7 +22,8 @@ DEFAULT_CONFIG = {
 
     "custom": {
         "mood_only": False,
-        "pure_color": True
+        "pure_color": True,
+        "min_intensity": 0.7
     }
 }
 
@@ -49,6 +50,7 @@ SADNESS_RGB = tuple(_CONFIG["emotions"]["sadness"])
 
 MOOD_ONLY   = bool(_CONFIG["custom"]["mood_only"])
 PURE_COLOR  = bool(_CONFIG["custom"]["pure_color"])
+MIN_INTENSITY = float(_CONFIG["custom"]["min_intensity"])
 
 # --------------------------------------------------
 # Utilities
@@ -147,12 +149,12 @@ def remap_intensity(value, in_max=100.0):
     """
 
     if in_max <= 0:
-        return 0.7
+        return MIN_INTENSITY
 
     v = _clamp(value / in_max, 0.0, 1.0)
 
-    if v <= 0.7:
-        return 0.7
+    if v <= MIN_INTENSITY:
+        return MIN_INTENSITY
 
     # linear ramp from 0.7 → 1.0
-    return 0.7 + (v - 0.7) * 1.0
+    return MIN_INTENSITY + (v - MIN_INTENSITY) * 1.0

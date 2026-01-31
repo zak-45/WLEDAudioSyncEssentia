@@ -13,6 +13,7 @@
 
   "custom": {
     "mood_only": false,
-    "pure_color": true
+    "pure_color": false,
+    "min_intensity": 0.7
   }
 }

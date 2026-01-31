@@ -30,6 +30,7 @@ This project captures real-time audio input, analyzes it using Essentia's machin
 *   **OSC Output**: Broadcasts classification results, color mappings, and mood data over UDP.
 *   **Visual Debug Overlay**: Optional graphical window showing detected genre, mood colors, and energy.
 *   **Adaptive Smoothing**: Implements buffer logic to prevent rapid flickering between predictions.
+*   **Reactivity Boost**: Detects sudden musical changes (RMS, confidence drops) to instantly adapt lighting and analysis.
 
 ## Prerequisites
 
