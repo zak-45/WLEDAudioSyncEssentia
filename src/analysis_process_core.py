@@ -57,6 +57,7 @@ class AnalysisCore:
             shutdown_event=None,
             silent_event=None,
     ):
+        self.last_segment_rms = None
         self.shutdown_event = shutdown_event
         self.silent_event = silent_event
         self.aux_mood = aux_mood
@@ -125,7 +126,7 @@ class AnalysisCore:
             capacity_seconds=2.1,
             sample_rate=cfg.MODEL_SAMPLE_RATE,
             min_analysis_seconds=cfg.EFFNET_MIN_DURATION,
-            hop_seconds=0.2
+            hop_seconds=0.6
         )
 
         self.genre_profiles, self.default_profile = load_genre_color_profiles(
@@ -226,7 +227,7 @@ class AnalysisCore:
             else:
 
                 # --------------------------------------------------
-                # FAST DEFAULT BUFFER
+                #  DEFAULT FAST BUFFER
                 # --------------------------------------------------
                 # add audio data to buffer
                 self.fast_ring_buffer.append(audio)
@@ -254,6 +255,10 @@ class AnalysisCore:
                 continue
 
             self.smooth.update(probs)
+            
+            # Detect musical change
+            self.detect_musical_change(segment, use_ring_buffer)
+
             top5 = self.smooth.top_n(5)
 
             top_label, top_conf = top5[0]
@@ -266,6 +271,11 @@ class AnalysisCore:
                     confidence=top_conf,
                     silent=False
                 )
+                
+                # if buffer shrink, reset also smooth
+                if self.adaptive.current < self.adaptive.max_s * 0.8:
+                    self.smooth.state *= 0.5
+                    self.mood_mapper.reset_valence() # Force valence reset too
 
             # load genre profile params from JSON
             profile = self.genre_profiles.get(macro_label, self.default_profile)
@@ -327,6 +337,11 @@ class AnalysisCore:
                         confidence=top_conf_macro,
                         silent=False
                     )
+
+                    # if buffer shrink, reset also smooth
+                    if self.adaptive.current < self.adaptive.max_s * 0.8:
+                        self.smooth.state *= 0.5
+                        self.mood_mapper.reset_valence()  # Force valence reset too
 
                 if self.debug:
                     print(f"{prefix} MACRO TOP5: ",
@@ -756,3 +771,47 @@ class AnalysisCore:
 
         self.accent_strength *= decay
         self.accent_strength = max(0.0, min(1.0, self.accent_strength))
+
+    def detect_musical_change(self, segment, use_ring_buffer):
+        """Detects abrupt musical changes based on RMS level differences between segments.
+
+        This method compares the root mean square (RMS) of the current audio segment
+        with the previous one to identify sudden changes in loudness that likely
+        correspond to musical transitions or drops.
+
+        Args:
+            segment: 1D NumPy array containing the current audio samples to analyze.
+            use_ring_buffer: Whether the analysis is currently using the main ring buffer
+                instead of the fast ring buffer.
+
+        """
+        # RMS calculation of actual segment
+        segment_rms = float(np.sqrt(np.mean(segment ** 2)))
+
+        if self.last_segment_rms is not None:
+            # calculate ratio changed
+            rms_change_ratio = abs(segment_rms - self.last_segment_rms) / (self.last_segment_rms + 1e-8)
+
+            # 0.4 = change 40%  RMS level
+            if rms_change_ratio > 0.4:
+                if self.debug:
+                    print(f"🔄 MUSICAL CHANGE DETECTED (RMS change={rms_change_ratio:.2f})")
+
+                # Reset smooth for better reactivity
+                self.smooth.state *= 0.3
+                self.mood_mapper.reset_valence()
+
+                # FIXED: force analyze
+                # to not lost 2.1s buffer
+                if use_ring_buffer:
+                    # force
+                    self.ring_buffer.samples_since_last_analysis = self.ring_buffer.hop_samples
+                else:
+                    self.fast_ring_buffer.samples_since_last_analysis = self.fast_ring_buffer.hop_samples
+
+                # reset other buffers
+                self.buffer = np.zeros(0, dtype=np.float32)
+                if hasattr(self, 'adaptive'):
+                    self.adaptive.reset()
+
+        self.last_segment_rms = segment_rms

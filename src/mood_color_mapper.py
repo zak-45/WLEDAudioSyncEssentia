@@ -174,7 +174,7 @@ class MoodColorMapper:
         # --------------------------------------------------
         # 6. Temporal smoothing (important!)
         # --------------------------------------------------
-        alpha = 0.2
+        alpha = 0.4  # Increased from 0.2 to 0.4 for faster reactivity
         self._valence = (
             alpha * raw_valence +
             (1.0 - alpha) * self._valence

@@ -5,6 +5,8 @@ This module provides a circular buffer that maintains a fixed-size audio window
 and allows efficient updates and extractions for overlapping analysis windows.
 Designed specifically for Effnet's minimum 2.1s requirement while enabling
 analysis at higher frequencies (e.g., every 1s).
+
+
 """
 
 import numpy as np
@@ -32,11 +34,12 @@ class RingBuffer:
         # Write position (next position to write)
         self.write_pos = 0
 
-        # Total samples written (for knowing when we have enough data)
+        # Total samples written (for knowing when we have enough data initially)
         self.total_written = 0
 
-        # Last extraction position (to track when we need a new analysis)
-        self.last_extract_pos = 0
+        # FIXED: Rolling number used to know when analyze
+        # reset after analyze
+        self.samples_since_last_analysis = 0
 
     def append(self, audio_chunk):
         """Add new audio samples to the ring buffer.
@@ -60,6 +63,9 @@ class RingBuffer:
         self.write_pos = (self.write_pos + chunk_size) % self.capacity_samples
         self.total_written += chunk_size
 
+        # FIXED: increment rolling number
+        self.samples_since_last_analysis += chunk_size
+
     def has_minimum_data(self):
         """Check if buffer contains enough samples for minimum analysis.
 
@@ -77,10 +83,8 @@ class RingBuffer:
         if not self.has_minimum_data():
             return False
 
-        # Calculate samples written since last extraction
-        samples_since_extract = self.total_written - self.last_extract_pos
-
-        return samples_since_extract >= self.hop_samples
+        # FIXED: use rolling number
+        return self.samples_since_last_analysis >= self.hop_samples
 
     def get_analysis_segment(self, segment_seconds=None):
         """Extract the most recent segment for analysis.
@@ -120,8 +124,8 @@ class RingBuffer:
             second_part = self.buffer[:(start_pos + segment_size) % self.capacity_samples]
             segment = np.concatenate([first_part, second_part])
 
-        # Update last extraction position
-        self.last_extract_pos = self.total_written
+        # FIXED:
+        self.samples_since_last_analysis = 0
 
         return segment
 
@@ -130,7 +134,8 @@ class RingBuffer:
         self.buffer[:] = 0.0
         self.write_pos = 0
         self.total_written = 0
-        self.last_extract_pos = 0
+        # FIXED: reset rolling number
+        self.samples_since_last_analysis = 0
 
     def get_fill_ratio(self):
         """Get the current fill ratio of the buffer.
@@ -153,5 +158,6 @@ class RingBuffer:
             "fill_ratio": self.get_fill_ratio(),
             "has_minimum": self.has_minimum_data(),
             "should_analyze": self.should_analyze(),
-            "samples_since_extract": self.total_written - self.last_extract_pos
+            # FIXED: Utiliser le compteur rolling
+            "samples_since_extract": self.samples_since_last_analysis
         }
