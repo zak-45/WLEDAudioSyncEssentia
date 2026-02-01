@@ -14,17 +14,20 @@
     "drop": {
       "condition": "arousal >= high_arousal",
       "effect": "Strobe",
-      "index": 2
+      "index": 2,
+      "cmd": ""
     },
     "groove": {
       "condition": "arousal >= 0.2",
       "effect": "Chase",
-      "index": 3
+      "index": 3,
+      "cmd": ""
     },
     "neutral": {
       "condition": "True",
       "effect": "Rainbow",
-      "index": 4
+      "index": 4,
+      "cmd": ""
     }
   }
 }

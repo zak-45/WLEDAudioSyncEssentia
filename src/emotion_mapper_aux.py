@@ -141,7 +141,7 @@ class EmotionMapperAUX:
 
         # --------------------------------------------------
         # EFFECT selection
-        effect, effect_label, effect_index, _ = self.effects.select_effect(valence, arousal)
+        effect, effect_label, effect_index, _, effect_cmd, _ = self.effects.select_effect(valence, arousal)
 
         # --------------------------------------------------
         # MOTION parameters
@@ -163,6 +163,7 @@ class EmotionMapperAUX:
             "index": effect_index,
             "speed": speed,
             "intensity": intensity_param,
+            "cmd": effect_cmd
         }
 
     # --------------------------------------------------
@@ -218,9 +219,9 @@ class EffectConfig:
 
         for name, entry in self.effects.items():
             if eval(entry["condition"], {}, ctx):
-                return entry["effect"], name, entry["index"], "index"
+                return entry["effect"], name, entry["index"], "index", entry["cmd"], "cmd"
 
-        return "Solid", "fallback", 0, "index"
+        return "Solid", "fallback", 0, "index", "", "cmd"
 
 
 # -------------------------------------------------

@@ -24,6 +24,7 @@ from src.mood_color_mapper import MoodColorMapper
 from src.adaptive_buffer import AdaptiveBuffer
 from src.utils import compute_color
 from src.genre_color_profile_loader import load_genre_color_profiles
+from src.command_runner import fire_and_forget as cmd_runner
 
 from src.ring_buffer import RingBuffer
 
@@ -404,10 +405,17 @@ class AnalysisCore:
                         genre=macro_label.lower()
                     )
                     if self.debug:
-                        print(f'[{prefix} PRESET] {emotion.effects.config["_meta"]}')
+                        print(f'[{prefix} EFFECT CONFIG] {emotion.effects.config["_meta"]}')
 
                     valence, arousal, intensity = emotion.compute_emotion(aux_dict)
                     wled_data = emotion.emotion_to_wled(valence, arousal, intensity)
+
+                    try:
+                        if len(wled_data['cmd']) > 0:
+                            cmd_runner(wled_data['cmd'], cwd=root_path('xtra/cmd'))
+                    except Exception as er:
+                        if self.debug:
+                            print(f"[{prefix} CMD ERROR] Error to execute {wled_data['cmd']} : ", er)
 
                     now_ms = time.time() * 1000
                     if strobe_ctrl.update(valence, arousal, intensity, now_ms):

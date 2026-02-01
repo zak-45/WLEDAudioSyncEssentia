@@ -15,27 +15,32 @@
     "joy": {
       "condition": "arousal >= high_arousal and valence >= positive_valence",
       "effect": "Chase",
-      "index": 2
+      "index": 2,
+      "cmd": ""
     },
     "anger": {
       "condition": "arousal >= high_arousal and valence <= negative_valence",
       "effect": "Fire",
-      "index": 3
+      "index": 3,
+      "cmd": ""
     },
     "calm": {
       "condition": "arousal <= low_arousal and valence >= positive_valence",
       "effect": "Fade",
-      "index": 4
+      "index": 4,
+      "cmd": ""
     },
     "sadness": {
       "condition": "arousal <= low_arousal and valence <= negative_valence",
       "effect": "Twinkle",
-      "index": 5
+      "index": 5,
+      "cmd": ""
     },
     "neutral": {
       "condition": "True",
       "effect": "Solid",
-      "index": 6
+      "index": 6,
+      "cmd": ""
     }
   }
 }

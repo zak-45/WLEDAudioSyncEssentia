@@ -14,17 +14,20 @@
     "calm": {
       "condition": "arousal <= low_arousal and valence >= positive_valence",
       "effect": "Aurora",
-      "index": 2
+      "index": 2,
+      "cmd": ""
     },
     "sad": {
       "condition": "arousal <= low_arousal and valence <= negative_valence",
       "effect": "Fade",
-      "index": 3
+      "index": 3,
+      "cmd": ""
     },
     "neutral": {
       "condition": "True",
       "effect": "Solid",
-      "index": 4
+      "index": 4,
+      "cmd": ""
     }
   }
 }
