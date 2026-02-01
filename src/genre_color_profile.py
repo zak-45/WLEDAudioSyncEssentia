@@ -18,3 +18,7 @@ class GenreColorProfile:
     energy_boost: float
     accent_gain: float
     flash_decay: float
+    emotion_sat_gain: float
+    emotion_bright_gain: float
+    emotion_white_gain: float
+    emotion_intensity_curve: str

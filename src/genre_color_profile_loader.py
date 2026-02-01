@@ -28,6 +28,10 @@ def load_genre_color_profiles(json_path):
             energy_boost=float(data["energy_boost"]),
             accent_gain=float(data["accent_gain"]),
             flash_decay=float(data["flash_decay"]),
+            emotion_sat_gain=float(data.get("emotion_sat_gain", 1.0)),
+            emotion_bright_gain=float(data.get("emotion_bright_gain", 1.0)),
+            emotion_white_gain=float(data.get("emotion_white_gain", 1.0)),
+            emotion_intensity_curve=data.get("emotion_intensity_curve", "linear")
         )
 
     default = profiles.get("DEFAULT")

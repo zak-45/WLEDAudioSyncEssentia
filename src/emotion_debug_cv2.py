@@ -2,14 +2,16 @@ import cv2
 import numpy as np
 import math
 from src.emotion_color import emotion_to_rgb, WHITE_RADIUS
+from src.emotion_mapper_aux import apply_genre_profile_rgb
 
 WINDOW = "WASEssentia Emotion Visual"
 
 class EmotionDebugCV2:
-    def __init__(self, size=540):
+    def __init__(self, size=540, use_profile=False):
         self.size = size
         self.center = size // 2
         self.radius = int(size * 0.42)
+        self.use_profile = use_profile
 
         self.background = self._build_wheel()
         cv2.namedWindow(WINDOW, cv2.WINDOW_AUTOSIZE)
@@ -69,7 +71,9 @@ class EmotionDebugCV2:
     # --------------------------------------------------
 
     def draw(self, valence, arousal, intensity,
-             emotion_label="", effect="", profile="", genre=""):
+             emotion_label="", effect="",
+             profile=None, genre=""):
+
 
         img = self.background.copy()
 
@@ -77,17 +81,51 @@ class EmotionDebugCV2:
         px = int(self.center + valence * self.radius)
         py = int(self.center - arousal * self.radius)
 
-        rgb = emotion_to_rgb(valence, arousal, intensity)
+        if self.use_profile:
+            base_rgb = emotion_to_rgb(valence, arousal, intensity)
+            final_rgb = apply_genre_profile_rgb(base_rgb, intensity, profile)
 
-        # Draw point
-        cv2.circle(img, (px, py), 9, (0, 0, 0), -1)
-        cv2.circle(img, (px, py), 6, rgb[::-1], -1)
+            rgb = final_rgb
 
-        # Color swatch
-        cv2.rectangle(img,
-                      (20, self.size - 80),
-                      (140, self.size - 30),
-                      rgb[::-1], -1)
+            # Base emotion point (ghost)
+            cv2.circle(img, (px, py), 10, (40, 40, 40), 1)
+            cv2.circle(img, (px, py), 6, base_rgb[::-1], 1)
+
+            # Final emotion point (solid)
+            cv2.circle(img, (px, py), 4, final_rgb[::-1], -1)
+
+            # Base emotion swatch
+            cv2.rectangle(img,
+                          (20, self.size - 120),
+                          (140, self.size - 80),
+                          base_rgb[::-1], -1)
+            cv2.putText(img, "Emotion",
+                        (20, self.size - 125),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4,
+                        (220, 220, 220), 1)
+
+            # Final (genre-shaped) swatch
+            cv2.rectangle(img,
+                          (20, self.size - 70),
+                          (140, self.size - 30),
+                          final_rgb[::-1], -1)
+            cv2.putText(img, "Final",
+                        (20, self.size - 75),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4,
+                        (220, 220, 220), 1)
+        else:
+
+            rgb = emotion_to_rgb(valence, arousal, intensity)
+
+            # Draw point
+            cv2.circle(img, (px, py), 9, (0, 0, 0), -1)
+            cv2.circle(img, (px, py), 6, rgb[::-1], -1)
+
+            # Color swatch
+            cv2.rectangle(img,
+                          (20, self.size - 80),
+                          (140, self.size - 30),
+                          rgb[::-1], -1)
 
         # Debug text
         def text(y, s):
@@ -102,7 +140,17 @@ class EmotionDebugCV2:
         text(135, f"Valence : {valence:+.2f}")
         text(160, f"Arousal : {arousal:+.2f}")
         text(185, f"Intensity: {intensity:.2f}")
+
+        if profile and self.use_profile:
+            text(215, f"GenreSatGain : {profile.emotion_sat_gain:.2f}")
+            text(235, f"GenreBright : {profile.emotion_bright_gain:.2f}")
+            text(255, f"WhiteGain  : {profile.emotion_white_gain:.2f}")
+            text(275, f"Curve      : {profile.emotion_intensity_curve}")
+
         text(self.size - 30, f"RGB : {rgb}")
+
+        ring_r = int(10 + intensity * 25)
+        cv2.circle(img, (px, py), ring_r, (200, 200, 200), 1)
 
         cv2.imshow(WINDOW, img)
         cv2.waitKey(1)

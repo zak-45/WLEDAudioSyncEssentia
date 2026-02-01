@@ -106,6 +106,10 @@ class RuntimeConfig:
     def AUX_MOOD_VISUAL(self):
         return self.cfg["aux_mood"]["visual"]
 
+    @property
+    def AUX_MOOD_GENRE_PROFILE(self):
+        return self.cfg["aux_mood"]["genre_profile"]
+
     # --- Ring Buffer (nouveau) ---
     @property
     def RING_BUFFER_CAPACITY(self):

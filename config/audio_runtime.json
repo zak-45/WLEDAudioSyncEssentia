@@ -46,8 +46,9 @@
 
   "aux_mood": {
     "activate": true,
-    "preset": "club",
-    "visual": true
+    "effect": "club",
+    "visual": true,
+    "genre_profile": true
   },
 
   "genre": {

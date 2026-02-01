@@ -89,8 +89,9 @@ class AnalysisCore:
             self.models = discover_models(root_path("models/mood"))
             self.load_aux()
             self.smooth.alpha = 0.2
+            emotion.use_profile = self.cfg.AUX_MOOD_GENRE_PROFILE
             if self.cfg.AUX_MOOD_VISUAL:
-                self.emotion_visual = EmotionDebugCV2(size=520)
+                self.emotion_visual = EmotionDebugCV2(size=520,use_profile=self.cfg.AUX_MOOD_GENRE_PROFILE)
 
         elif self.aux:
 

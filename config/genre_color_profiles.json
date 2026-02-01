@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "description": "Genre-driven color behavior profiles (activity → saturation, emotion → brightness)",
-    "version": 2
+    "description": "Genre-driven color behavior profiles with emotion expression shaping",
+    "version": 3
   },
 
   "DEFAULT": {
@@ -11,7 +11,12 @@
     "mood_hue_weight": 0.45,
     "energy_boost": 1.00,
     "accent_gain": 1.00,
-    "flash_decay": 0.88
+    "flash_decay": 0.88,
+
+    "emotion_sat_gain": 1.00,
+    "emotion_bright_gain": 1.00,
+    "emotion_white_gain": 1.00,
+    "emotion_intensity_curve": "linear"
   },
 
   "Rock": {
@@ -21,7 +26,12 @@
     "energy_boost": 1.15,
     "accent_gain": 0.90,
     "flash_decay": 0.69,
-    "mood_hue_weight": 0.55
+    "mood_hue_weight": 0.55,
+
+    "emotion_sat_gain": 1.20,
+    "emotion_bright_gain": 0.95,
+    "emotion_white_gain": 0.75,
+    "emotion_intensity_curve": "hard"
   },
 
   "Metal": {
@@ -31,7 +41,12 @@
     "energy_boost": 1.18,
     "accent_gain": 0.97,
     "flash_decay": 0.66,
-    "mood_hue_weight": 0.58
+    "mood_hue_weight": 0.58,
+
+    "emotion_sat_gain": 1.35,
+    "emotion_bright_gain": 0.90,
+    "emotion_white_gain": 0.65,
+    "emotion_intensity_curve": "hard"
   },
 
   "Hip Hop": {
@@ -41,7 +56,12 @@
     "energy_boost": 1.05,
     "accent_gain": 0.83,
     "flash_decay": 0.71,
-    "mood_hue_weight": 0.51
+    "mood_hue_weight": 0.51,
+
+    "emotion_sat_gain": 1.10,
+    "emotion_bright_gain": 0.95,
+    "emotion_white_gain": 0.85,
+    "emotion_intensity_curve": "linear"
   },
 
   "Electronic": {
@@ -51,7 +71,12 @@
     "energy_boost": 1.05,
     "accent_gain": 0.90,
     "flash_decay": 0.69,
-    "mood_hue_weight": 0.55
+    "mood_hue_weight": 0.55,
+
+    "emotion_sat_gain": 1.25,
+    "emotion_bright_gain": 0.95,
+    "emotion_white_gain": 0.70,
+    "emotion_intensity_curve": "hard"
   },
 
   "Funk / Soul": {
@@ -61,7 +86,12 @@
     "energy_boost": 1.00,
     "accent_gain": 0.79,
     "flash_decay": 0.73,
-    "mood_hue_weight": 0.49
+    "mood_hue_weight": 0.49,
+
+    "emotion_sat_gain": 1.10,
+    "emotion_bright_gain": 1.05,
+    "emotion_white_gain": 0.90,
+    "emotion_intensity_curve": "linear"
   },
 
   "Pop": {
@@ -71,7 +101,12 @@
     "energy_boost": 0.98,
     "accent_gain": 0.76,
     "flash_decay": 0.74,
-    "mood_hue_weight": 0.48
+    "mood_hue_weight": 0.48,
+
+    "emotion_sat_gain": 1.05,
+    "emotion_bright_gain": 1.10,
+    "emotion_white_gain": 0.95,
+    "emotion_intensity_curve": "linear"
   },
 
   "Latin": {
@@ -81,7 +116,12 @@
     "energy_boost": 1.05,
     "accent_gain": 0.83,
     "flash_decay": 0.71,
-    "mood_hue_weight": 0.51
+    "mood_hue_weight": 0.51,
+
+    "emotion_sat_gain": 1.15,
+    "emotion_bright_gain": 1.05,
+    "emotion_white_gain": 0.85,
+    "emotion_intensity_curve": "linear"
   },
 
   "Reggae": {
@@ -91,7 +131,12 @@
     "energy_boost": 0.92,
     "accent_gain": 0.65,
     "flash_decay": 0.78,
-    "mood_hue_weight": 0.43
+    "mood_hue_weight": 0.43,
+
+    "emotion_sat_gain": 0.90,
+    "emotion_bright_gain": 1.10,
+    "emotion_white_gain": 1.10,
+    "emotion_intensity_curve": "soft"
   },
 
   "Jazz": {
@@ -101,7 +146,12 @@
     "energy_boost": 0.88,
     "accent_gain": 0.62,
     "flash_decay": 0.79,
-    "mood_hue_weight": 0.41
+    "mood_hue_weight": 0.41,
+
+    "emotion_sat_gain": 0.85,
+    "emotion_bright_gain": 1.05,
+    "emotion_white_gain": 1.20,
+    "emotion_intensity_curve": "soft"
   },
 
   "Classical": {
@@ -111,7 +161,12 @@
     "energy_boost": 0.82,
     "accent_gain": 0.51,
     "flash_decay": 0.82,
-    "mood_hue_weight": 0.36
+    "mood_hue_weight": 0.36,
+
+    "emotion_sat_gain": 0.75,
+    "emotion_bright_gain": 1.10,
+    "emotion_white_gain": 1.35,
+    "emotion_intensity_curve": "soft"
   },
 
   "Blues": {
@@ -121,7 +176,12 @@
     "energy_boost": 0.86,
     "accent_gain": 0.58,
     "flash_decay": 0.80,
-    "mood_hue_weight": 0.40
+    "mood_hue_weight": 0.40,
+
+    "emotion_sat_gain": 0.85,
+    "emotion_bright_gain": 1.05,
+    "emotion_white_gain": 1.25,
+    "emotion_intensity_curve": "soft"
   },
 
   "Folk, World, & Country": {
@@ -131,7 +191,12 @@
     "energy_boost": 0.84,
     "accent_gain": 0.55,
     "flash_decay": 0.81,
-    "mood_hue_weight": 0.39
+    "mood_hue_weight": 0.39,
+
+    "emotion_sat_gain": 0.85,
+    "emotion_bright_gain": 1.05,
+    "emotion_white_gain": 1.20,
+    "emotion_intensity_curve": "soft"
   },
 
   "Stage & Screen": {
@@ -141,7 +206,12 @@
     "energy_boost": 0.95,
     "accent_gain": 0.65,
     "flash_decay": 0.78,
-    "mood_hue_weight": 0.43
+    "mood_hue_weight": 0.43,
+
+    "emotion_sat_gain": 1.00,
+    "emotion_bright_gain": 1.10,
+    "emotion_white_gain": 1.10,
+    "emotion_intensity_curve": "linear"
   },
 
   "Children's": {
@@ -151,7 +221,12 @@
     "energy_boost": 1.00,
     "accent_gain": 0.72,
     "flash_decay": 0.75,
-    "mood_hue_weight": 0.46
+    "mood_hue_weight": 0.46,
+
+    "emotion_sat_gain": 1.10,
+    "emotion_bright_gain": 1.20,
+    "emotion_white_gain": 1.00,
+    "emotion_intensity_curve": "linear"
   },
 
   "Brass & Military": {
@@ -161,7 +236,12 @@
     "energy_boost": 1.05,
     "accent_gain": 0.79,
     "flash_decay": 0.73,
-    "mood_hue_weight": 0.49
+    "mood_hue_weight": 0.49,
+
+    "emotion_sat_gain": 1.15,
+    "emotion_bright_gain": 1.00,
+    "emotion_white_gain": 0.85,
+    "emotion_intensity_curve": "hard"
   },
 
   "Non-Music": {
@@ -171,6 +251,11 @@
     "energy_boost": 0.60,
     "accent_gain": 0.30,
     "flash_decay": 0.90,
-    "mood_hue_weight": 0.25
+    "mood_hue_weight": 0.25,
+
+    "emotion_sat_gain": 0.60,
+    "emotion_bright_gain": 0.90,
+    "emotion_white_gain": 1.50,
+    "emotion_intensity_curve": "soft"
   }
 }

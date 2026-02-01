@@ -1,10 +1,43 @@
 import json
+import math
+
 from src.emotion_color import emotion_to_rgb   # authoritative color logic
 
 
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
+def apply_genre_profile_rgb(rgb, intensity, profile):
+    """
+    profile
+
+    """
+    if profile is None:
+        return rgb
+
+    def i_clamp(v): return max(0, min(255, int(v)))
+
+    # intensity curve
+    i = intensity
+    if profile.emotion_intensity_curve == "hard":
+        i = i * i
+    elif profile.emotion_intensity_curve == "soft":
+        i = math.sqrt(i)
+
+    # brightness shaping
+    r, g, b = rgb
+    gain = profile.emotion_bright_gain * i
+    r, g, b = r * gain, g * gain, b * gain
+
+    # white pull
+    white_mix = (1.0 - i) * profile.emotion_white_gain
+    white_mix = max(0.0, min(1.0, white_mix))
+
+    r = r + (255 - r) * white_mix
+    g = g + (255 - g) * white_mix
+    b = b + (255 - b) * white_mix
+
+    return i_clamp(r), i_clamp(g), i_clamp(b)
 
 class EmotionMapperAUX:
     """
@@ -13,10 +46,11 @@ class EmotionMapperAUX:
     and then into WLED parameters.
     """
 
-    def __init__(self, config_manager):
+    def __init__(self, config_manager, use_profile=False):
         self.config_manager = config_manager
         self.effects = config_manager.load("default")
         self.debug = False
+        self.use_profile = use_profile
 
     # --------------------------------------------------
 
@@ -80,14 +114,33 @@ class EmotionMapperAUX:
         """
         Converts emotion space → WLED parameters
         using the NEW correct emotion→RGB logic.
+        with genre-aware emotion shaping.
         """
 
-        # --------------------------------------------------
-        # COLOR (authoritative)
-        r, g, b = emotion_to_rgb(valence, arousal, intensity)
+        if self.use_profile:
+            # --------------------------------------------------
+            # COLOR (genre-aware)
+            # --------------------------------------------------
+            # 1. Base emotion color (authoritative)
+            rgb = emotion_to_rgb(valence, arousal, intensity)
+
+            # --------------------------------------------------
+            # 2. Genre emotion modifiers (optional)
+            profile = getattr(self.effects, "genre_profile", None)
+
+            if profile is not None:
+                r, g, b = apply_genre_profile_rgb(rgb, intensity, profile)
+            else:
+                r, g, b = rgb
+
+        else:
+
+            # --------------------------------------------------
+            # COLOR (authoritative)
+            r, g, b = emotion_to_rgb(valence, arousal, intensity)
 
         # --------------------------------------------------
-        # EFFECT selection (unchanged)
+        # EFFECT selection
         effect, effect_label, effect_index, _ = self.effects.select_effect(valence, arousal)
 
         # --------------------------------------------------
