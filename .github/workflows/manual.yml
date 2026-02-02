@@ -112,6 +112,7 @@ jobs:
             assets=assets
             config=config
             docs=docs
+            xtra=xtra
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
