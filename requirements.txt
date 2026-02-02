@@ -9,3 +9,4 @@ soxr
 opencv-python
 aubio-ledfx
 scipy
+asteval

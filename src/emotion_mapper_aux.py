@@ -2,6 +2,7 @@ import json
 import math
 
 from src.emotion_color import emotion_to_rgb   # authoritative color logic
+from asteval import Interpreter
 
 
 def clamp(v, lo, hi):
@@ -37,7 +38,7 @@ def apply_genre_profile_rgb(rgb, intensity, profile):
     g = g + (255 - g) * white_mix
     b = b + (255 - b) * white_mix
 
-    return i_clamp(r), i_clamp(g), i_clamp(b)
+    return (i_clamp(r), i_clamp(g), i_clamp(b))
 
 class EmotionMapperAUX:
     """
@@ -209,6 +210,7 @@ class EffectConfig:
 
         self.thresholds = self.config["thresholds"]
         self.effects = self.config["effects"]
+        self._aeval = Interpreter()
 
     def select_effect(self, valence, arousal):
         ctx = {
@@ -218,10 +220,16 @@ class EffectConfig:
         }
 
         for name, entry in self.effects.items():
-            if eval(entry["condition"], {}, ctx):
+            # update available symbols for this evaluation
+            self._aeval.symtable.clear()
+            self._aeval.symtable.update(ctx)
+
+            cond = self._aeval(entry["condition"])
+            if bool(cond):
                 return entry["effect"], name, entry["index"], "index", entry["cmd"], "cmd"
 
         return "Solid", "fallback", 0, "index", "", "cmd"
+
 
 
 # -------------------------------------------------
