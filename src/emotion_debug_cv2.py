@@ -106,11 +106,11 @@ class EmotionDebugCV2:
 
             # Final (genre-shaped) swatch
             cv2.rectangle(img,
-                          (20, self.size - 70),
-                          (140, self.size - 30),
+                          (20, self.size - 65),
+                          (140, self.size - 25),
                           final_rgb[::-1], -1)
             cv2.putText(img, "Final",
-                        (20, self.size - 75),
+                        (20, self.size - 70),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4,
                         (220, 220, 220), 1)
         else:
@@ -129,7 +129,7 @@ class EmotionDebugCV2:
 
         # Debug text
         def text(y, s):
-            cv2.putText(img, s, (160, y),
+            cv2.putText(img, s, (200, y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                         (230, 230, 230), 1)
 
@@ -142,10 +142,10 @@ class EmotionDebugCV2:
         text(185, f"Intensity: {intensity:.2f}")
 
         if profile and self.use_profile:
-            text(215, f"GenreSatGain : {profile.emotion_sat_gain:.2f}")
-            text(235, f"GenreBright : {profile.emotion_bright_gain:.2f}")
-            text(255, f"WhiteGain  : {profile.emotion_white_gain:.2f}")
-            text(275, f"Curve      : {profile.emotion_intensity_curve}")
+            text(365, f"GenreSatGain : {profile.emotion_sat_gain:.2f}")
+            text(385, f"GenreBright : {profile.emotion_bright_gain:.2f}")
+            text(405, f"WhiteGain  : {profile.emotion_white_gain:.2f}")
+            text(425, f"Curve      : {profile.emotion_intensity_curve}")
 
         text(self.size - 30, f"RGB : {rgb}")
 

@@ -31,8 +31,8 @@ from src.ring_buffer import RingBuffer
 from src.emotion_mapper_aux import EmotionMapperAUX, clamp, StrobeController
 from src.effect_config_manager import EffectConfigManager
 
-config_mgr = EffectConfigManager(root_path("config/effects"))
-emotion = EmotionMapperAUX(config_mgr)
+effect_config_mgr = EffectConfigManager(root_path("config/effects"))
+emotion = EmotionMapperAUX(effect_config_mgr)
 
 strobe_ctrl = StrobeController()
 
@@ -400,7 +400,7 @@ class AnalysisCore:
                         self.osc.send(path, float(value))
 
                 if self.aux_mood:
-                    # Update context when known
+                    # load genre effect
                     emotion.update_context(
                         genre=macro_label.lower()
                     )
